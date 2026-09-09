@@ -176,7 +176,7 @@
 #isx-hint{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:11px; color:var(--isx-ink2);
   background:rgba(247,240,222,.7); padding:1px 10px; border-radius:10px; z-index:15; letter-spacing:1px;}
 #isx-fab{
-  position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom, 0px)); z-index:99991; width:46px; height:46px;
+  position:fixed; left:50%; top:50%; margin:-23px 0 0 -23px; z-index:99991; width:46px; height:46px;
   display:flex; align-items:center; justify-content:center; cursor:grab; font-size:22px;
   background:linear-gradient(180deg,#f7f0de,#d8c79e); color:#5e4420;
   border:2px solid var(--isx-gold); border-radius:50%;
@@ -184,7 +184,7 @@
   transition:transform .15s;
 }
 @media (max-width:786px){
-  #isx-fab{ right:12px; bottom:calc(88px + env(safe-area-inset-bottom, 0px)); width:40px; height:40px; font-size:19px; }
+  #isx-fab{ width:40px; height:40px; font-size:19px; margin:-20px 0 0 -20px; }
 }
 #isx-fab:hover{transform:scale(1.1);}
 #isx-fab.dragging, #isx-fab.dragging:hover{ transform:none; transition:none; cursor:grabbing; }
@@ -263,7 +263,7 @@
     pdoc.body.appendChild(fab);
     // 恢复上次拖放的位置
     try {
-        const savedFab = JSON.parse(localStorage.getItem('iseria_map_fab_pos') || 'null');
+        const savedFab = JSON.parse(localStorage.getItem('iseria_map_fab_pos_v2') || 'null');
         if (savedFab && typeof savedFab.left === 'number') {
             const fl = Math.min(pdoc.documentElement.clientWidth - 46, Math.max(0, savedFab.left));
             const ft = Math.min(pdoc.documentElement.clientHeight - 46, Math.max(0, savedFab.top));
@@ -725,7 +725,7 @@ pdoc.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeDlg();} });
                 const ft = Math.min(pdoc.documentElement.clientHeight - 46, Math.max(0, r.top));
                 fab.style.left = fl + 'px';
                 fab.style.top = ft + 'px';
-                localStorage.setItem('iseria_map_fab_pos', JSON.stringify({ left: Math.round(fl), top: Math.round(ft) }));
+                localStorage.setItem('iseria_map_fab_pos_v2', JSON.stringify({ left: Math.round(fl), top: Math.round(ft) }));
             } catch (e) {}
         }
         _fabDrag = false;
