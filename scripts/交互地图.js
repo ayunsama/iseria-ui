@@ -36,6 +36,14 @@
   overflow:hidden; user-select:none;
 }
 #isx-overlay.dragging{ transform:none; }
+@media (max-width:786px){
+  #isx-overlay{
+    left:0 !important; top:0 !important; right:0; bottom:0;
+    transform:none !important; width:100vw; height:100vh; height:100dvh;
+    border-radius:0; padding:6px;
+  }
+  #isx-overlay.dragging{ transform:none !important; }
+}
 #isx-overlay, #isx-overlay *{box-sizing:border-box;}
 #isx-overlay *{margin:0; padding:0;}
 #isx-app{display:flex; flex-direction:column; height:100%; padding:10px 12px; gap:8px;}
@@ -662,8 +670,15 @@ pdoc.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeDlg();} });
     $('#isx-baseImg').src = IMG.base;
     function toggleMap(force) {
         const show = force !== undefined ? force : ov.style.display === 'none';
-        ov.style.display = show ? 'flex' : 'none';
-        if (show) requestAnimationFrame(() => fitFrame());
+        if (show) {
+            // 每次打开强制屏幕居中：清除历史拖拽残留的 left/top/dragging，保证手机端可见
+            ov.classList.remove('dragging');
+            ov.style.left = ''; ov.style.top = ''; ov.style.transform = '';
+            ov.style.display = 'flex';
+            requestAnimationFrame(() => fitFrame());
+        } else {
+            ov.style.display = 'none';
+        }
     }
     // ===== 小地图按钮拖动：按住拖走，原地单击仍是开关地图；位置记忆 =====
     // 拖动路径可能经过楼层内容 iframe（iframe 会吞掉 mousemove），故拖动期间垫一层全屏透明遮罩接管事件
