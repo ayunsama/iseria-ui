@@ -45,6 +45,9 @@
  *       · 加剧词（加剧/升级/恶化/蔓延…）——坏事升级 → 强制按上升计
  *       · 化解词（平息/镇压/击退/阻止/化解/解围…）——大事件被化解 → 按缓和计（如"叛乱被镇压"）
  *   - 区域影响封顶：所有「区域」级已结算影响合计 clamp 在 ±15（区域性冲突再多，全球紧张度也只小幅波动）
+ *   - 【平衡】楼龄衰减：每条新闻影响随楼龄减半（半衰期 60 楼，剧情停滞超 25 楼退潮加速×2）——旧闻随时间淡出，紧张度自然回落
+ *   - 【平衡】分层正向封顶：世界正向 ≤+25 / 大陆正向 ≤+35 / 区域 ±15（负向不设限）——中小新闻堆量只到危机期，决战期必须由世界级事件支撑
+ *   - 【平衡】自动落幕：新闻楼龄超 300 楼自动移出结算并标记已落幕（不再复活）——即便 AI 从不标记过期，紧张度也会缓步回归基线
  *   - 紧张度回落：新闻被标记「是否过期: 是」或从 动态新闻 删除后，其影响自动从期望值移除（事件结束 → 回落）
  *   - 已结算表上限保护：超过 500 条时优先删除影响为 0 的记录
  *
@@ -192,10 +195,15 @@
 
   // 清理已结算表：新闻从 动态新闻 删除 → 移除其影响（事件结束，紧张度回落）；
   // 并做上限保护（优先删 0 影响记录）。不再"非零影响永久保留"——否则紧张度只升不降。
-  function cleanupSettled(newsMap, settled) {
+  function cleanupSettled(newsMap, settled, settledDone) {
     // 1) 孤儿清理：新闻已从 动态新闻 删除 → 移除其影响（紧张度回落）
     for (const title in settled) {
       if (!Object.prototype.hasOwnProperty.call(newsMap, title)) delete settled[title];
+    }
+    if (settledDone) {
+      for (const title in settledDone) {
+        if (!Object.prototype.hasOwnProperty.call(newsMap, title)) delete settledDone[title];
+      }
     }
     // 2) 上限保护：超过 500 条时优先删除影响为 0 的旧记录
     let count = Object.keys(settled).length;
@@ -267,9 +275,12 @@
           continue;
         }
         if (Object.prototype.hasOwnProperty.call(settled, title)) continue;
+        if (flags.紧张度已落幕 && flags.紧张度已落幕[title]) continue; // 自动落幕的新闻不再复活
         const scope = normalizeScope(news.影响范围);
         const impact = computeNewsImpact(title, news.内容, news.重要性, scope, ifLine);
-        settled[title] = { v: impact, s: scope };
+        let _f = 0;
+        try { _f = Math.max(0, getLastMessageId()); } catch (_e) {}
+        settled[title] = { v: impact, s: scope, f: _f };
         if (impact !== 0) {
           console.log(`[紧张度] 新闻「${title}」结算影响 ${impact > 0 ? '+' : ''}${impact}（范围：${scope}）${ifLine ? '（IF线反转）' : ''}`);
           // 方案五：世界大事记（只记录有实际影响的新闻）
@@ -280,13 +291,30 @@
       }
 
       // 1.5) 清理已结算表（已删除新闻移除影响 + 上限保护）
-      cleanupSettled(newsMap, settled);
+      cleanupSettled(newsMap, settled, flags.紧张度已落幕);
 
       // 2) 期望值 = 基线 + Σ(影响)，按范围分组 + 区域影响封顶，clamp 0~100 并覆盖（防 AI 直接改）
       let worldDelta = 0, contDelta = 0, regDelta = 0;
+      let _curFloor = 0, _newest = 0;
+      try { _curFloor = Math.max(0, getLastMessageId()); } catch (_e) {}
+      for (const _t in settled) { const _rf = settled[_t]?.f; if (typeof _rf === 'number' && _rf > _newest) _newest = _rf; }
+      // ── 平衡补丁：楼龄衰减（半衰期60楼、无地板——旧闻终将彻底淡出）；剧情停滞超过
+      //    25楼 → 退潮加速×2；楼龄超300楼自动落幕（见Σ循环）。紧张度自然回归基线
+      const _speed = (_curFloor - _newest > 25) ? 2 : 1;
+      const _decay = (v, f0) => {
+        const age = Math.max(0, _curFloor - (typeof f0 === 'number' ? f0 : _curFloor));
+        return v * Math.pow(0.5, age / (60 / _speed));
+      };
       for (const title in settled) {
         const rec = settled[title];
-        const v = settledValue(rec);
+        // ── 平衡补丁：自动落幕——楼龄超过 300 楼的新闻强制移出结算并标记已落幕
+        //    （时过境迁彻底归零；已落幕标记防止下一tick重新结算复活）
+        if (typeof rec?.f === 'number' && _curFloor - rec.f > 300) {
+          (flags.紧张度已落幕 = flags.紧张度已落幕 || {})[title] = true;
+          delete settled[title];
+          continue;
+        }
+        const v = _decay(settledValue(rec), rec.f);
         const s = (rec && typeof rec === 'object' && rec.s) ? rec.s : '大陆';
         if (s === '世界') worldDelta += v;
         else if (s === '区域') regDelta += v;
@@ -294,6 +322,10 @@
       }
       // 区域影响封顶：区域性事件再多，全球紧张度也只波动 ±15（王国内战 ≠ 全球决战）
       regDelta = Math.max(-15, Math.min(15, regDelta));
+      // ── 平衡补丁：世界/大陆正向封顶（负向不设限）——决战期必须由世界级事件支撑，
+      //    中小新闻堆量只能到危机期；大事件淡出后（衰减/过期）紧张度自然回落
+      worldDelta = Math.max(-30, Math.min(25, worldDelta));
+      contDelta = Math.max(-45, Math.min(35, contDelta));
       let expect = flags.紧张度基线 + worldDelta + contDelta + regDelta;
       expect = Math.max(0, Math.min(100, Math.round(expect)));
 
