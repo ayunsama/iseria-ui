@@ -255,3 +255,108 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         }
     } catch (e) { /* 静默 */ }
 })();
+
+// ===== 类数据库输出 v2 · AI 实时三段上下文 =====
+// 每次用户发消息 → 一次 AI 调用 → 生成【世界书记录】【历史档案】【行为核查】
+// 结果注入 CHAT_COMPLETION_PROMPT_READY（世界书之后所以不触发绿灯）
+// 开关：settings 类数据库开关（默认关，在悬浮窗设置面板控制）
+;(function () {
+    'use strict';
+    const _sentinel = '【类数据库输出】';
+    let _pendingResult = '';
+    let _busy = false;
+
+    // ---- 开关读取（settings 类数据库开关，默认关） ----
+    function _enabled() {
+        try {
+            const TH = window.TavernHelper;
+            if (!TH || !TH.getVariables) return false;
+            const vars = TH.getVariables({ type: 'script', script_id: (typeof getScriptId === 'function' ? getScriptId() : '') }) || {};
+            return vars['类数据库开关'] === true;
+        } catch (e) { return false; }
+    }
+
+    // ---- AI 调用：解析用户消息 → 三段上下文 ----
+    async function analyzeUserMessage(userText) {
+        const TH = window.TavernHelper;
+        if (!TH || !TH.generateRaw) return '';
+        // 收集角色状态
+        let heroInfo = '';
+        try {
+            const vars = TH.getVariables ? TH.getVariables({ type: 'message', message_id: 'latest' }) : {};
+            const stat = (vars || {}).stat_data || {};
+            const hero = stat['主角'] || {};
+            const bi = hero['基础信息'] || {};
+            const bs = hero['基础状态'] || {};
+            const loc = (stat['世界'] || {})['当前地点'] || (stat['世界'] || {})['当前位置'] || '';
+            const inv = Object.keys((hero['资产与能力'] || {})['物品栏'] || {}).slice(0, 10).join('、');
+            heroInfo = '角色:' + ((bi['姓名'] || '') || '未知')
+                + ' | 等级:' + (bs['总等级'] || 1)
+                + ' | 位置:' + loc
+                + ' | 物品:' + (inv || '空')
+                + ' | 职业:' + Object.keys(bs['职业信息'] || {}).join(',');
+        } catch (e) {}
+        const sys = [
+            '你是行为一致性审核员兼世界书索引器。请根据角色状态和世界书设定，对用户输入进行三段分析：',
+            '',
+            '【世界书记录】',
+            '从世界书设定中提取与本条用户输入相关的 2~4 条关键事实（每条一行，以"- "开头）。',
+            '只提取与本条行为直接相关的事实，无关的不写。',
+            '',
+            '【历史档案】',
+            '从以上对话中提取与本条行为相关的 1~3 条先前事件（每条一行，以"- "开头）。',
+            '只提取有因果关联的先前事件，无关的不写。',
+            '',
+            '【行为核查】',
+            '解析用户行为，逐条列出具体动作，并对照角色当前状态（位置/物品/等级）检查一致性。',
+            '每条格式：- 行为描述 → 状态对照结果',
+            '如果没有不一致，最后一条写"- 行为一致"。',
+            '',
+            '只输出以上三段，禁止输出任何其他内容。如果某段没有内容，写"无"。'
+        ].join('\n');
+        const user = '【角色当前状态】\n' + heroInfo + '\n\n【用户输入】\n' + userText;
+        const r = await generateRaw({
+            user_input: user,
+            should_stream: false,
+            should_silence: true,
+            ordered_prompts: [
+                { role: 'system', content: sys },
+                { role: 'user', content: userText }
+            ],
+            overrides: { exclude_preset: true, exclude_worldinfo: true }
+        });
+        return typeof r === 'string' ? r.trim() : '';
+    }
+
+    // ---- 注入：CHAT_COMPLETION_PROMPT_READY ----
+    try {
+        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, function (chat) {
+            try {
+                if (!Array.isArray(chat) || !chat.length) return;
+                for (const m of chat) {
+                    if (m && m.role === 'system' && String(m.content || '').includes(_sentinel)) return;
+                }
+                if (!_pendingResult) return;
+                chat.push({ role: 'system', content: _sentinel + '\n以下为系统自动索引的参考信息（仅供背景参照与一致性检查，禁止在正文中直接复述）：\n\n' + _pendingResult });
+                _pendingResult = ''; // 注入后清空
+            } catch (e) {}
+        });
+    } catch (e) {}
+
+    // ---- 监听用户发送 → 触发 AI 分析 ----
+    try {
+        eventOn(tavern_events.MESSAGE_SENT, function (message) {
+            try {
+                if (!_enabled()) return;
+                const text = typeof message === 'string' ? message : String(message || '');
+                if (!text || text.length < 3) return;
+                if (_busy) return;
+                _busy = true;
+                analyzeUserMessage(text).then(function (result) {
+                    _pendingResult = result;
+                    _busy = false;
+                }).catch(function () { _busy = false; });
+            } catch (e) {}
+        });
+    } catch (e) {}
+})();
