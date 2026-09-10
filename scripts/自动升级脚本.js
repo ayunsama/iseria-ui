@@ -529,7 +529,9 @@
       const shouldHave = lv * perLv;
       let grantedSp = safeParseInt(fe.grantedSp, -1);
       if (grantedSp < 0) {
-        grantedSp = safeParseInt(fe.技能点, 0) > 0 ? shouldHave : 0;
+        // 无升级快照（开局直接有等级）：以现状为基线登记，不做一次性追溯补发
+        fe.grantedSp = shouldHave;
+        continue;
       }
       if (grantedSp < shouldHave) {
         const gap = shouldHave - grantedSp;
@@ -557,7 +559,7 @@
       // 【旧档自愈】历史融合职业的追踪字段只存在 $customSkillTrees 深层（事件写回不可靠），
       // 曾导致每轮重复补发。这里检测到职业信息条目上无 grantedLv/grantedSp 时自动补齐，
       // 使保底立即对齐并停止补发；此前已多发的 HP/MP/SP/技能点需玩家按需手动校准。
-      if (safeParseInt(fe.grantedLv, -1) < 0 && safeParseInt(fe.grantedSp, -1) < 0) {
+      if (safeParseInt(fe.grantedLv, -1) < 0 || safeParseInt(fe.grantedSp, -1) < 0) {
         fe.grantedLv = lv;
         fe.grantedSp = lv * safeParseInt(fg.sp, 0);
         console.warn(`[职业升级][${job}] 检测到旧版${fusedMeta ? '融合职业' : '自创职业'}，已自动补齐追踪字段（grantedLv=${fe.grantedLv}, grantedSp=${fe.grantedSp}）以停止每轮补发；若数值已因重复补发过多，请用全局修改器手动校准`);
