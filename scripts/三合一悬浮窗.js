@@ -101,3 +101,157 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         });
     } catch (e) { console.warn('[历史索引器] 注入注册失败:', e && e.message); }
 })();
+
+// ===== 类数据库输出 · 三段上下文增强系统 =====
+// 每次用户发消息时，在提示词末尾追加：
+// 【世界书记录】从世界书条目自动提取的关键事实
+// 【历史档案】从聊天历史提取的关键事件
+// 【行为核查】AI 解析用户行为的一致性检查
+// 哨兵【类数据库】防双注入；在世界书处理之后注入所以不触发绿灯
+;(function () {
+    'use strict';
+    const _dbSentinel = '【类数据库】';
+    const _dbKey = 'isuria_db_context';
+
+    // ---- 世界书记录：从已启用世界书条目提取关键事实（一行一条）----
+    function extractWorldbookFacts() {
+        try {
+            const TH = window.TavernHelper;
+            if (!TH || !TH.getWorldbook) return [];
+            const names = TH.getCharWorldbookNames ? TH.getCharWorldbookNames('current') : null;
+            const wbName = names && names.primary ? names.primary : '伊瑟利亚3.4';
+            const entries = TH.getWorldbook ? TH.getWorldbook(wbName) : [];
+            if (!entries || !entries.length) return [];
+            // 取关键设定条目（蓝灯+世界/种族/体系/神明类）的一行事实
+            const facts = [];
+            const keyEntries = entries.filter(function (e) {
+                if (!e.enabled) return false;
+                const n = e.name || e.comment || '';
+                return /世界总纲|种族|体系|神明与神界|龙类谱系|位阶/.test(n);
+            });
+            for (const e of keyEntries) {
+                const c = e.content || '';
+                // 提取含"是/为/有/藏"的事实行
+                const lines = c.split(/\n/).filter(function (l) {
+                    const s = l.trim();
+                    return s.length > 8 && s.length < 80 && /[是为藏含]/.test(s) && !s.startsWith('#') && !s.startsWith('<');
+                });
+                for (const line of lines) {
+                    facts.push(line.replace(/^[-\s*•]+/, '').trim());
+                    if (facts.length >= 12) break;
+                }
+                if (facts.length >= 12) break;
+            }
+            return facts;
+        } catch (e) { return []; }
+    }
+
+    // ---- 历史档案：从聊天历史提取关键事件（一行一条）----
+    function extractHistoryEvents() {
+        try {
+            const ctx = window.SillyTavern ? window.SillyTavern.getContext() : null;
+            if (!ctx || !ctx.chat) return [];
+            const events = [];
+            const chat = ctx.chat;
+            const start = Math.max(0, chat.length - 30);
+            for (let i = start; i < chat.length; i++) {
+                const m = chat[i];
+                if (!m || !m.mes || m.is_user) continue;
+                // 提取 AI 回复中的关键事件句（含动作/变化的句子）
+                const lines = m.mes.split(/[。！？\n]/).filter(function (s) {
+                    const t = s.trim();
+                    return t.length > 10 && t.length < 60 && /[获得|失去|死亡|离开|到达|发现|遭遇|签定|觉醒|突破|升级|受伤|治愈]/.test(t);
+                });
+                for (const line of lines) {
+                    if (events.length < 10) events.push('第' + (i + 1) + '楼: ' + line.trim());
+                }
+                if (events.length >= 10) break;
+            }
+            return events;
+        } catch (e) { return []; }
+    }
+
+    // ---- 行为核查：AI 解析用户行为一致性 ----
+    let _behaviorCheckBusy = false;
+    let _lastBehaviorResult = '';
+    async function behavioralCheck(userMessage) {
+        if (_behaviorCheckBusy) return _lastBehaviorResult;
+        _behaviorCheckBusy = true;
+        try {
+            const ctx = window.SillyTavern ? window.SillyTavern.getContext() : null;
+            const TH = window.TavernHelper;
+            if (!ctx || !TH) return '';
+            const stat = (TH.getVariables ? TH.getVariables({ type: 'message', message_id: 'latest' }) : {}).stat_data || {};
+            const hero = stat['主角'] || {};
+            const heroName = (hero['基础信息'] || {})['姓名'] || '主角';
+            const money = JSON.stringify(hero['基础状态'] || {}).length > 0 ? '' : '';
+            const loc = (stat['世界'] || {})['当前地点'] || (stat['世界'] || {})['当前位置'] || '';
+            const inv = Object.keys((hero['资产与能力'] || {})['物品栏'] || {}).slice(0, 10).join('、');
+            const jobs = Object.keys((hero['基础状态'] || {})['职业信息'] || {}).join('、');
+            const sys = '你是行为一致性审核员。请对照以下角色状态，解析用户输入中的行为，并标出任何与当前状态不一致之处（如没有的物品却说使用、不在的位置却说到达）。每行一条，格式：- 行为描述 → 状态对照。如果没有不一致，输出"行为一致"。只输出分析结果，禁止输出其他内容。\n'
+                + '【角色当前状态】\n'
+                + '姓名: ' + heroName + '\n'
+                + '位置: ' + loc + '\n'
+                + '职业: ' + jobs + '\n'
+                + '物品栏: ' + (inv || '空') + '\n'
+                + '【用户输入】\n' + userMessage;
+            const r = await generateRaw({
+                user_input: sys,
+                should_stream: false,
+                should_silence: true,
+                overrides: { exclude_preset: true, exclude_worldinfo: true, exclude_macros: false }
+            });
+            _lastBehaviorResult = typeof r === 'string' ? r.trim() : '';
+            return _lastBehaviorResult;
+        } catch (e) { return ''; }
+        finally { _behaviorCheckBusy = false; }
+    }
+
+    // ---- 注入：CHAT_COMPLETION_PROMPT_READY ----
+    try {
+        if (typeof eventOn !== 'undefined' && typeof tavern_events !== 'undefined') {
+            eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, function (chat) {
+                try {
+                    if (!Array.isArray(chat)) return;
+                    for (const m of chat) {
+                        if (m && m.role === 'system' && String(m.content || '').indexOf(_dbSentinel) !== -1) return;
+                    }
+                    // 找最后一条用户消息
+                    let lastUser = null;
+                    for (let i = chat.length - 1; i >= 0; i--) {
+                        if (chat[i].role === 'user') { lastUser = chat[i]; break; }
+                    }
+                    if (!lastUser) return;
+                    const parts = [];
+                    // 世界书记录
+                    const wbFacts = extractWorldbookFacts();
+                    if (wbFacts.length) parts.push('【世界书记录】\n' + wbFacts.map(function (f) { return '- ' + f; }).join('\n'));
+                    // 历史档案
+                    const histEvents = extractHistoryEvents();
+                    if (histEvents.length) parts.push('【历史档案】\n' + histEvents.map(function (e) { return '- ' + e; }).join('\n'));
+                    // 行为核查（异步结果缓存）
+                    if (_lastBehaviorResult) parts.push('【行为核查】\n' + _lastBehaviorResult);
+                    if (parts.length) {
+                        chat.push({ role: 'system', content: _dbSentinel + '\n以下为系统自动索引的参考信息（仅供背景参照，禁止在正文中直接复述）：\n\n' + parts.join('\n\n') });
+                    }
+                } catch (e) { /* 静默 */ }
+            });
+        }
+    } catch (e) { /* 静默 */ }
+
+    // ---- 行为核查触发：监听用户发送 ----
+    try {
+        if (typeof eventOn !== 'undefined' && typeof tavern_events !== 'undefined') {
+            eventOn(tavern_events.MESSAGE_SENT, function (message) {
+                try {
+                    const text = typeof message === 'string' ? message : (message && message.mes) || '';
+                    if (!text || text.length < 5) return;
+                    // 异步触发行为核查（不阻塞）
+                    behavioralCheck(text).then(function (result) {
+                        if (result) console.info('[类数据库] 行为核查完成:', result.slice(0, 80));
+                    });
+                } catch (e) {}
+            });
+        }
+    } catch (e) { /* 静默 */ }
+})();
