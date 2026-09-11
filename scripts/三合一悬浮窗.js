@@ -36,10 +36,14 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
 // ===== 类数据库配置（全局读取，tab 控制卡与各 IIFE 共用）=====
 ;window.__iseriaDbCfg = function () {
     try {
-        const TH = window.TavernHelper;
-        const vars = TH && TH.getVariables ? TH.getVariables({ type: 'script', script_id: (typeof getScriptId === 'function' ? getScriptId() : '') }) || {} : {};
-        const c = vars['类数据库配置'] || {};
-        const legacy = vars['类数据库开关'] === true;
+        let c = {};
+        try { c = JSON.parse(localStorage.getItem('iseria_db_cfg') || '{}') || {}; } catch (_pe) { c = {}; }
+        if (!Object.keys(c).length) {
+            const TH = window.TavernHelper;
+            const vars = TH && TH.getVariables ? TH.getVariables({ type: 'script', script_id: (typeof getScriptId === 'function' ? getScriptId() : '') }) || {} : {};
+            c = vars['类数据库配置'] || {};
+        }
+        const legacy = false;
         return {
             enabled: typeof c.enabled === 'boolean' ? c.enabled : legacy,
             segIndex: c.segIndex !== false,
@@ -247,12 +251,18 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                 }
                 let _latestOut = '';
                 try {
-                    const TH = window.TavernHelper;
-                    const vars = TH && TH.getVariables ? TH.getVariables({ type: 'chat' }) || {} : {};
-                    const outs = vars['isuria_db_outputs'] || {};
-                    const floors = Object.keys(outs).map(Number).sort(function (a, b) { return b - a; });
-                    if (floors.length) _latestOut = outs[floors[0]] || '';
-                } catch (e4) {}
+                    const _stored = JSON.parse(localStorage.getItem('iseria_db_outputs') || 'null');
+                    if (_stored && _stored.text) _latestOut = _stored.text;
+                } catch (_e5) {}
+                if (!_latestOut) {
+                    try {
+                        const TH = window.TavernHelper;
+                        const vars = TH && TH.getVariables ? TH.getVariables({ type: 'chat' }) || {} : {};
+                        const outs = vars['isuria_db_outputs'] || {};
+                        const floors = Object.keys(outs).map(Number).sort(function (a, b) { return b - a; });
+                        if (floors.length) _latestOut = outs[floors[0]] || '';
+                    } catch (_e6) {}
+                }
                 if (!_latestOut) return;
                 chat.push({ role: 'system', content: _sentinel + '\n以下为系统自动索引的参考信息（仅供背景参照与一致性检查，禁止在正文中直接复述）：\n\n' + _latestOut });
             } catch (e) {}
@@ -277,6 +287,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                 _busy = true;
                 analyzeUserMessage(text).then(function (result) {
                     _pendingResult = result;
+                    try { localStorage.setItem('iseria_db_outputs', JSON.stringify({ floor: floor, text: result })); } catch (_e4) {}
                     try {
                         const TH = window.TavernHelper;
                         const vars = TH && TH.getVariables ? TH.getVariables({ type: 'chat' }) || {} : {};
@@ -324,13 +335,16 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
   'use strict';
   function _saveDbCfg(patch){
     try{
-      const TH=window.TavernHelper;
-      const sid=(typeof getScriptId==='function'?getScriptId():'');
-      const vars=TH&&TH.getVariables?TH.getVariables({type:'script',script_id:sid})||{}:{};
-      const c=vars['类数据库配置']||{};
-      Object.assign(c,patch);
-      vars['类数据库配置']=c;
-      if(TH&&TH.replaceVariables)TH.replaceVariables(vars,{type:'script',script_id:sid});
+      const cur=window.__iseriaDbCfg?window.__iseriaDbCfg():{};
+      const merged=Object.assign({},cur,patch);
+      try{localStorage.setItem('iseria_db_cfg',JSON.stringify(merged));}catch(_le){}
+      try{
+        const TH=window.TavernHelper;
+        const sid=(typeof getScriptId==='function'?getScriptId():'');
+        const vars=TH&&TH.getVariables?TH.getVariables({type:'script',script_id:sid})||{}:{};
+        vars['类数据库配置']=merged;
+        if(TH&&TH.replaceVariables)TH.replaceVariables(vars,{type:'script',script_id:sid});
+      }catch(_e2){}
       return true;
     }catch(e){return false}
   }
@@ -381,6 +395,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
       if(!b || b.id!=='db-rebuild') return;
       if(!confirm('清空历史索引并重新开始？（不影响世界书与聊天记录）')) return;
       try{
+        try{localStorage.removeItem('iseria_db_outputs');}catch(_e7){}
         const TH=window.TavernHelper;
         const sid=(typeof getScriptId==='function'?getScriptId():'');
         const vars=TH&&TH.getVariables?TH.getVariables({type:'script',script_id:sid})||{}:{};
