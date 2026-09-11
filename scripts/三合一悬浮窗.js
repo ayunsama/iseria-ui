@@ -229,9 +229,16 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                 for (const m of chat) {
                     if (m && m.role === 'system' && String(m.content || '').includes(_sentinel)) return;
                 }
-                if (!_pendingResult) return;
-                chat.push({ role: 'system', content: _sentinel + '\n以下为系统自动索引的参考信息（仅供背景参照与一致性检查，禁止在正文中直接复述）：\n\n' + _pendingResult });
-                _pendingResult = ''; // 注入后清空
+                let _latestOut = '';
+                try {
+                    const TH = window.TavernHelper;
+                    const vars = TH && TH.getVariables ? TH.getVariables({ type: 'chat' }) || {} : {};
+                    const outs = vars['isuria_db_outputs'] || {};
+                    const floors = Object.keys(outs).map(Number).sort(function (a, b) { return b - a; });
+                    if (floors.length) _latestOut = outs[floors[0]] || '';
+                } catch (e4) {}
+                if (!_latestOut) return;
+                chat.push({ role: 'system', content: _sentinel + '\n以下为系统自动索引的参考信息（仅供背景参照与一致性检查，禁止在正文中直接复述）：\n\n' + _latestOut });
             } catch (e) {}
         });
     } catch (e) {}
@@ -242,12 +249,27 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             try {
                 var _c2 = window.__iseriaDbCfg ? window.__iseriaDbCfg() : { enabled: false, segAI: true };
                 if (!_c2.enabled || !_c2.segAI) return;
-                const text = typeof message === 'string' ? message : String(message || '');
+                const floor = Number(message);
+                if (!(floor >= 0)) return;
+                let text = '';
+                try {
+                    const arr = (typeof getChatMessages === 'function' ? getChatMessages(floor) : null) || [];
+                    text = (Array.isArray(arr) ? arr : [arr]).map(function (x) { return x && x.mes ? String(x.mes) : ''; }).join('');
+                } catch (e2) { text = ''; }
                 if (!text || text.length < 3) return;
                 if (_busy) return;
                 _busy = true;
                 analyzeUserMessage(text).then(function (result) {
                     _pendingResult = result;
+                    try {
+                        const TH = window.TavernHelper;
+                        const vars = TH && TH.getVariables ? TH.getVariables({ type: 'chat' }) || {} : {};
+                        const outs = vars['isuria_db_outputs'] || {};
+                        outs[floor] = result;
+                        const keys = Object.keys(outs).map(Number).sort(function (a, b) { return a - b; });
+                        while (keys.length > 50) { delete outs[keys.shift()]; }
+                        if (TH && TH.insertOrAssignVariables) TH.insertOrAssignVariables({ 'isuria_db_outputs': outs }, { type: 'chat' });
+                    } catch (e3) {}
                     _busy = false;
                 }).catch(function () { _busy = false; });
             } catch (e) {}
