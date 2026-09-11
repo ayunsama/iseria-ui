@@ -422,6 +422,8 @@ const Schema = z.object({
     年龄成长: safeNum(0),
     // 追踪记录全量开关（$前缀：AI 不可见；状态栏切换。true=状态变量输出全量流水，false=仅最近 5 条省 token）
     追踪记录全量: z.boolean().prefault(false),
+    // NPC事项全量开关（$前缀：AI 不可见；状态栏切换。true=主要NPC时间线全量输出，false=每名NPC仅最近 5 条事项省 token）
+    NPC事项全量: z.boolean().prefault(false),
     // 死亡旗标（$前缀：AI 上下文不可见但可按条目指令写入；仅限主角——主角确认死亡时置位，是死亡/回溯结算条目的唯一展开闸门，流程落定后复位。同伴/NPC/敌人死亡禁止置位。唯一允许 AI 写入的 $ 字段，见[死亡与回溯规则]）
     死亡: z.boolean().prefault(false)
   }).prefault({}),
