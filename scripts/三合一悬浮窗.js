@@ -264,10 +264,8 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                     try {
                         const TH = window.TavernHelper;
                         const vars = TH && TH.getVariables ? TH.getVariables({ type: 'chat' }) || {} : {};
-                        const outs = vars['isuria_db_outputs'] || {};
+                        const outs = {};
                         outs[floor] = result;
-                        const keys = Object.keys(outs).map(Number).sort(function (a, b) { return a - b; });
-                        while (keys.length > 50) { delete outs[keys.shift()]; }
                         if (TH && TH.insertOrAssignVariables) TH.insertOrAssignVariables({ 'isuria_db_outputs': outs }, { type: 'chat' });
                     } catch (e3) {}
                     _busy = false;
