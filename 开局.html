@@ -7997,7 +7997,7 @@ function applyUndyingPreset() {
 
             window.__ISURIA_NON_RP__ = true;
             try {
-                generateRaw({
+                generateRaw({ ordered_prompts: ['user_input'],
                     user_input: promptText,
                     should_silence: true,
                     overrides: {
@@ -9844,12 +9844,14 @@ function applyUndyingPreset() {
         // ===== 健壮 JSON 提取（AI 输出带围栏/尾随文字/描述含括号时仍正确解析） =====
         function extractJsonArray(text) {
             var raw = String(text == null ? '' : text);
+            raw = raw.replace(/<思维链>[\s\S]*?<\/思维链>/g, ' ');
             var cand = null;
-            var fm = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+            var fm = raw.match(/```json\s*([\s\S]*?)\s*```/i) || raw.match(/```\s*([\s\S]*?)\s*```/);
             if (fm) cand = fm[1];
             else cand = raw;
             var start = cand.indexOf('[');
-            if (start === -1) start = cand.indexOf('{');
+            var brace = cand.indexOf('{');
+            if (brace !== -1 && (start === -1 || brace < start)) start = brace;
             if (start !== -1) {
                 var opener = cand[start], closer = opener === '[' ? ']' : '}';
                 var depth = 0, end = -1;
@@ -9869,14 +9871,23 @@ function applyUndyingPreset() {
             }
             cand = cand.replace(/,\s*([\]}])/g, '$1');
             cand = cand.replace(/[,;]+\s*$/g, '');
-            try { return JSON.parse(cand); }
+            var out = null;
+            try { out = JSON.parse(cand); }
             catch (e) {
                 var fixed = cand.replace(/,\s*([\]}])/g, '$1');
-                try { return JSON.parse(fixed); }
+                try { out = JSON.parse(fixed); }
                 catch (e2) {
                     throw new Error('JSON解析失败：' + e2.message + ' | 原文尾部: …' + cand.slice(-120));
                 }
             }
+            if (Array.isArray(out)) {
+                var firstObj = null;
+                for (var k = 0; k < out.length; k++) {
+                    if (out[k] && typeof out[k] === 'object' && !Array.isArray(out[k])) { firstObj = out[k]; break; }
+                }
+                out = firstObj !== null ? firstObj : (out.length ? out[0] : null);
+            }
+            return out;
         }
         window.extractJsonArray = extractJsonArray;
 
@@ -9955,7 +9966,7 @@ function applyUndyingPreset() {
                 // 非 RP 生成标志：跳过紧张度脚本的【世界动态】注入，避免污染"只输出 JSON"的技能树任务
                 window.__ISURIA_NON_RP__ = true;
                 try {
-                var result = await generateRaw({
+                var result = await generateRaw({ ordered_prompts: ['user_input'],
                     user_input: promptText,
                     should_silence: true,
                     overrides: {
@@ -10094,7 +10105,7 @@ function applyUndyingPreset() {
             promptText += '4. society 要结合组合里两个种族的社会地位来写';
 
             try {
-                var result = await generateRaw({
+                var result = await generateRaw({ ordered_prompts: ['user_input'],
                     user_input: promptText,
                     should_silence: true,
                     overrides: {
@@ -10106,7 +10117,7 @@ function applyUndyingPreset() {
                 statusEl.innerHTML = '✅ 世界意识响应完成，正在解析…';
 
                 var parsed = extractJsonArray(result);
-                if (!parsed || !parsed.name) throw new Error('返回数据缺少 name 字段');
+                if (!parsed || !parsed.name) throw new Error('返回数据缺少 name 字段（解析结果: ' + (parsed ? (Array.isArray(parsed) ? '数组' : typeof parsed) + (typeof parsed === 'object' && parsed ? ' keys=[' + Object.keys(parsed).join(',') + ']' : '') : 'null') + '）');
 
                 // 组装文本
                 var text = '';
@@ -11732,7 +11743,7 @@ mvuData.stat_data = stat;
                 // 非 RP 生成标志：跳过紧张度脚本的【世界动态】注入，避免污染"只输出 JSON"的技能树任务
                 window.__ISURIA_NON_RP__ = true;
                 try {
-                var result = await generateRaw({
+                var result = await generateRaw({ ordered_prompts: ['user_input'],
                     user_input: promptText,
                     should_silence: true,
                     overrides: {
@@ -11945,7 +11956,7 @@ mvuData.stat_data = stat;
                 window.__ISURIA_NON_RP__ = true;
                 var result;
                 try {
-                    result = await generateRaw({
+                    result = await generateRaw({ ordered_prompts: ['user_input'],
                         user_input: promptText,
                         should_silence: true,
                         overrides: {
