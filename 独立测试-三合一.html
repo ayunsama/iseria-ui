@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>三合一悬浮窗 独立测试</title>
+<script src="https://testingcf.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.prod.js"></script>
+<script src="https://testingcf.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<style>
+  body { margin:0; background: linear-gradient(160deg,#1a1410,#2a2018); min-height:100vh; font-family: sans-serif; }
+  #mock-bg { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; color:#6b5a3e; font-size:20px; user-select:none; }
+</style>
+<script>
+/* 页面日志捕获（供 evaluate 读取） */
+window.__LOGS = [];
+['log','info','warn','error'].forEach(k=>{
+  const orig = console[k].bind(console);
+  console[k] = (...a)=>{ try{ window.__LOGS.push([k, a.map(x=>{ try{ return typeof x==='string'?x:JSON.stringify(x).slice(0,200); }catch{ return String(x); } }).join(' ')]); }catch{} orig(...a); };
+});
+window.onerror = (m,s,l,c)=>{ window.__LOGS.push(['pageerror', m+' @'+(s||'')+':'+l]); };
+
+/* ===== 酒馆助手环境 Mock（独立浏览器测试用） ===== */
+(function(){
+  const store = {}; // 模拟脚本变量存储
+  const log = [];
+  function rec(fn, args){ log.push([fn, JSON.stringify(args).slice(0,200)]); try{ console.info('[MOCK]', fn, ...args); }catch{} }
+
+  window.SillyTavern = {
+    getCurrentChatId: () => 'mock-chat-独立测试',
+    getContext: () => ({ chat: [] }),
+    generate: async () => 'mock',
+  };
+  window.toastr = { success: m=>console.info('[toastr]',m), error: m=>console.warn('[toastr]',m), warning: m=>console.info('[toastr]',m), info: m=>console.info('[toastr]',m) };
+
+  window.getVariables = (opt) => { rec('getVariables',[opt]); return JSON.parse(JSON.stringify(store)); };
+  window.replaceVariables = (v, opt) => { rec('replaceVariables',[opt]); Object.assign(store, JSON.parse(JSON.stringify(v||{}))); return true; };
+  window.insertOrAssignVariables = (v, opt) => { rec('insertOrAssignVariables',[opt]); Object.assign(store, JSON.parse(JSON.stringify(v||{}))); return true; };
+  window.getChatMessages = (id, opt) => { rec('getChatMessages',[id]); return []; };
+  window.setChatMessages = async () => true;
+  window.createChatMessages = async () => ({});
+  window.deleteChatMessages = async () => true;
+  window.getScriptId = () => 'mock-script-id';
+  window.getIframeName = () => 'mock-iframe';
+  window.getScriptButtons = async () => [];
+  window.replaceScriptButtons = async () => true;
+  window.getScripts = async () => [];
+  window.replaceScripts = async () => true;
+  window.getScriptVariables = async () => ({});
+  window.replaceScriptVariables = async () => true;
+  window.createScriptButtons = async () => true;
+  window.deleteScriptButtons = async () => true;
+  window.updateScriptButton = async () => true;
+  window.getButtonEvent = async () => ({});
+  window.replaceButtonEvent = async () => true;
+  window.insertOrAssignVariables = window.insertOrAssignVariables || (() => true);
+  window.triggerSlash = async () => '';
+  window.errorCatched = (fn) => async function(...a){ try{ return await fn(...a); }catch(e){ console.error('[errorCatched]', e); } };
+  window.generate = async () => 'mock生成';
+  window.generateRaw = async () => 'mock生成';
+  window.getWorldbook = async () => [];
+  window.replaceWorldbook = async () => true;
+  window.getCharData = async () => ({});
+  window.injectPrompts = async () => true;
+  window.getTavernRegexes = async () => [];
+  window.replaceTavernRegexes = async () => true;
+  window.getLorebookSettings = async () => ({});
+  window.getChatHistory = async () => [];
+
+  const handlers = {};
+  window.tavern_events = new Proxy({}, { get: (t,k)=> k }); // 事件名直接用 key
+  window.eventOn = (name, fn) => { (handlers[name] = handlers[name]||[]).push(fn); return { id: 1, name }; };
+  window.eventOnReturn = window.eventOn;
+  window.eventEmit = (name, ...a) => { rec('eventEmit',[name]); (handlers[name]||[]).forEach(f=>{ try{f(...a)}catch(e){console.error(e)} }); };
+  window.eventOnce = window.eventOn;
+  window.Mvu = { getMvuData: () => ({ stat_data: {} }), events: {} };
+  /* TavernHelper 聚合对象（脚本内 TH=window.TavernHelper 调用路径） */
+  window.TavernHelper = {
+    getVariables: window.getVariables,
+    replaceVariables: window.replaceVariables,
+    insertOrAssignVariables: window.insertOrAssignVariables,
+    getChatMessages: window.getChatMessages,
+    setChatMessages: window.setChatMessages,
+    getScriptButtons: window.getScriptButtons,
+    replaceScriptButtons: window.replaceScriptButtons,
+    getScriptId: window.getScriptId,
+    triggerSlash: window.triggerSlash,
+    generate: window.generate,
+    generateRaw: window.generateRaw,
+    getWorldbook: window.getWorldbook,
+    replaceWorldbook: window.replaceWorldbook,
+  };
+  window.__MOCK_LOG = log;
+  window.__MOCK_STORE = store;
+  console.info('[MOCK] 酒馆助手环境已就绪');
+})();
+</script>
+</head>
+<body>
+  <div id="mock-bg">（独立测试背景 — 三合一悬浮窗应渲染在右上角悬浮球）</div>
+  <script type="module">
+    try {
+      await import('./scripts/三合一悬浮窗.js?v=' + Date.now());
+      console.info('[MOCK] 脚本加载完成');
+      document.title = '三合一悬浮窗 独立测试 - 已加载';
+    } catch(e) {
+      console.error('[MOCK] 脚本加载失败', e);
+      document.title = '三合一悬浮窗 独立测试 - 加载失败: ' + (e.message || e);
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;left:10px;bottom:10px;right:10px;background:#5a1f1f;color:#ffb0b0;padding:10px;border-radius:8px;font-size:12px;white-space:pre-wrap;z-index:99999';
+      d.textContent = '脚本加载失败: ' + (e.stack || e.message || e);
+      document.body.appendChild(d);
+    }
+  </script>
+</body>
+</html>
