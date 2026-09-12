@@ -1,5 +1,5 @@
 // 伊瑟利亚 · 三合一悬浮窗（内嵌版，2026-09-12：外链模式在部分网络环境不可靠，应用户要求内嵌）
-const __HUB_VER='3.2.3';
+const __HUB_VER='3.2.5';
 async function __iseriaHubBoot() {
 let e,n,t,a,r;
 {
@@ -52,7 +52,10 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             segIndex: c.segIndex !== false,
             segAI: c.segAI !== false,
             idxMax: Number(c.idxMax) > 0 ? Number(c.idxMax) : 400,
-            histFloors: Number(c.histFloors) > 0 ? Number(c.histFloors) : 30
+            histFloors: Number(c.histFloors) > 0 ? Number(c.histFloors) : 30,
+            dbApiUrl: typeof c.dbApiUrl === 'string' ? c.dbApiUrl : 'https://gcli.ggchan.dev/v1',
+            dbApiKey: typeof c.dbApiKey === 'string' ? c.dbApiKey : '',
+            dbModel: typeof c.dbModel === 'string' && c.dbModel ? c.dbModel : 'gemini-3-flash-preview'
         };
     } catch (e) { return { enabled: false, segIndex: true, segAI: true, idxMax: 400, histFloors: 30 }; }
 };
@@ -310,12 +313,18 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         // 改用开局面板已验证可用的模式：ordered_prompts=['user_input'] + 全部指令折叠进 user 文本
         const fullPrompt = sys + '\n\n===\n\n' + user;
         console.log('[类数据库] 发起三段分析 generateRaw (prompt ' + fullPrompt.length + ' 字)');
-        const r = await generateRaw({
+        const cfgA = window.__iseriaDbCfg ? window.__iseriaDbCfg() : {};
+        const genCfg = {
             user_input: fullPrompt,
             should_stream: false,
             should_silence: true,
             ordered_prompts: ['user_input']
-        });
+        };
+        if (cfgA.dbApiUrl && cfgA.dbApiKey && cfgA.dbModel) {
+            genCfg.custom_api = { apiurl: cfgA.dbApiUrl, key: cfgA.dbApiKey, model: cfgA.dbModel, source: 'openai' };
+            console.log('[类数据库] 使用独立 API: ' + cfgA.dbModel);
+        }
+        const r = await generateRaw(genCfg);
         const text = typeof r === 'string' ? r.trim() : '';
         if (!text) console.warn('[类数据库] 三段分析返回为空（generateRaw 成功但无文本）');
         return text;
@@ -517,13 +526,30 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             +'<span id="db-status" style="color:#6b5a3e;">'+_fmtStatus()+'</span>'
             +'<button id="db-rebuild" type="button" style="cursor:pointer;border:1px solid rgba(122,90,44,.4);background:linear-gradient(160deg,#ffefc8,#ffe0a0);border-radius:8px;padding:3px 10px;font-size:11px;color:#5a3a1a;">🔄 重建索引</button>'
             +'</div>'
+            +'<div style="border-top:1px dashed rgba(122,90,44,.3);margin-top:6px;padding-top:6px;">'
+            +'<div style="font-size:11px;color:#8a6f45;margin-bottom:4px;">三段分析独立 API（避开主生成限流；留空=走当前酒馆 API）</div>'
+            +'<div style="display:flex;flex-direction:column;gap:4px;">'
+            +'<label style="display:flex;align-items:center;gap:5px;">模型 <input type="text" data-dbtext="dbModel" value="'+escDb(c.dbModel)+'" style="flex:1;min-width:0;"></label>'
+            +'<label style="display:flex;align-items:center;gap:5px;">API <input type="text" data-dbtext="dbApiUrl" value="'+escDb(c.dbApiUrl)+'" style="flex:1;min-width:0;"></label>'
+            +'<label style="display:flex;align-items:center;gap:5px;">Key <input type="password" data-dbtext="dbApiKey" value="'+escDb(c.dbApiKey)+'" style="flex:1;min-width:0;"></label>'
+            +'</div></div>'
             +'</div>';
         host.dataset.dbInit = '1';
     }
+    function escDb(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
     function _bind(host) {
         host.addEventListener('change', function (e) {
             const t = e.target;
-            if (!t.matches || !t.matches('[data-db]')) return;
+            if (!t.matches) return;
+            // 文本配置项（独立 API）：输入即暂存，失焦/回车保存
+            if (t.matches('[data-dbtext]')) {
+                const k = t.getAttribute('data-dbtext');
+                if (_saveDbCfg({ [k]: t.value })) {
+                    if (window.toastr) window.toastr.success('已保存（' + k + '）', '📊 类数据库');
+                } else if (window.toastr) window.toastr.error('保存失败', '📊 类数据库');
+                return;
+            }
+            if (!t.matches('[data-db]')) return;
             const k = t.getAttribute('data-db');
             let v;
             if (t.type === 'checkbox') v = t.checked;
