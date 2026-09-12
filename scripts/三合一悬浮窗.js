@@ -54,7 +54,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             idxMax: Number(c.idxMax) > 0 ? Number(c.idxMax) : 400,
             histFloors: Number(c.histFloors) > 0 ? Number(c.histFloors) : 30,
             dbApiUrl: typeof c.dbApiUrl === 'string' ? c.dbApiUrl : 'https://gcli.ggchan.dev/v1',
-            dbApiKey: typeof c.dbApiKey === 'string' ? c.dbApiKey : '',
+            dbApiKey: typeof c.dbApiKey === 'string' && c.dbApiKey ? c.dbApiKey : 'gg-gcli-JBBs5SIspKhufjGhlxBtpdAvlfLWBtrE261zklzsYEc',
             dbModel: typeof c.dbModel === 'string' && c.dbModel ? c.dbModel : 'gemini-3-flash-preview'
         };
     } catch (e) { return { enabled: false, segIndex: true, segAI: true, idxMax: 400, histFloors: 30 }; }
