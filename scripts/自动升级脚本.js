@@ -907,9 +907,139 @@
     eventOn(getButtonEvent(按钮名), onManualLevelUpButton);
   }
 
+  // ---- 点数硬门槛（COMMAND_PARSED 命令拦截）----
+  // 属性提升受 基础属性.未分配点数 余额约束、职业等级提升受 基础状态.待分配职业等级 余额约束：
+  // 本批合计增量超过余额 → 整批拦截丢弃并警告；合法 → 脚本自动追加扣点命令（AI 无需也不应自己扣）。
+  // 玩家在状态栏的手动分配走 updateVariablesWith 直写路径，不触发 COMMAND_PARSED，不受影响。
+  // 转职（remove 旧职业 + insert 新职业）不消耗点数，不拦截。
+  function gateSegsOf(cmd) {
+    var raw = cmd && cmd.args && cmd.args.length ? cmd.args[0] : null;
+    if (raw === undefined || raw === null) return [];
+    var segs;
+    if (String(raw).charAt(0) === '/') {
+      segs = String(raw).split('/').filter(function (s) { return s !== ''; }).map(function (s) {
+        return s.replace(/~1/g, '/').replace(/~0/g, '~');
+      });
+    } else {
+      segs = String(raw).split('.');
+    }
+    if (segs[0] === 'stat_data' || segs[0] === 'status_current_variables') segs = segs.slice(1);
+    return segs;
+  }
+  var GATE_ATTRS = ['力量', '敏捷', '体质', '智力', '感知', '魅力'];
+  // 返回该命令对目标的增量；非增量语义（insert/remove/move/非数值）返回 null
+  function gateOpDelta(cmd, current) {
+    if (!cmd || !cmd.args || cmd.args.length < 2) return null;
+    var v = Number(cmd.args[1]);
+    if (!isFinite(v)) return null;
+    if (cmd.type === 'add' || cmd.type === 'delta' || cmd.type === 'inc') return v;
+    if (cmd.type === 'set' || cmd.type === 'replace') return v - current;
+    return null;
+  }
+  function gateWarn(msg) {
+    console.warn('[升级脚本·点数硬门槛]', msg);
+    if (typeof toastr !== 'undefined' && toastr.warning) toastr.warning(msg, '点数硬门槛');
+  }
+  function gateReadPools() {
+    try {
+      var mvu = (typeof Mvu !== 'undefined' && Mvu.getMvuData) ? Mvu.getMvuData({ type: 'message', message_id: 'latest' }) : null;
+      var sd = mvu ? (mvu.stat_data || mvu) : null;
+      var hero = sd && sd.主角;
+      return {
+        attrPool: safeParseInt(hero && hero.基础属性 && hero.基础属性.未分配点数, 0),
+        jobPool: safeParseInt(hero && hero.基础状态 && hero.基础状态.待分配职业等级, 0),
+        attrs: (hero && hero.基础属性) || {},
+        jobs: (hero && hero.基础状态 && hero.基础状态.职业信息) || {},
+      };
+    } catch (e) { return { attrPool: 0, jobPool: 0, attrs: {}, jobs: {} }; }
+  }
+  function gateStripPoolWrites(commands, segsMatch, label) {
+    // AI 对两个点数池的直写一律剥离：扣点由脚本自动完成（防双扣），增加被严禁
+    for (var i = commands.length - 1; i >= 0; i--) {
+      if (segsMatch(gateSegsOf(commands[i]))) {
+        console.warn('[升级脚本·点数硬门槛] 已剥离对 ' + label + ' 的 AI 直写（脚本自动扣点）');
+        commands.splice(i, 1);
+      }
+    }
+    return commands;
+  }
+  function gatePointSpending(commands) {
+    if (!commands || !commands.length) return;
+    var pools = gateReadPools();
+    // ── 1. 属性提升闸门 ──
+    var attrCmdIdx = [];
+    for (var i = 0; i < commands.length; i++) {
+      var segs = gateSegsOf(commands[i]);
+      if (segs.length === 3 && segs[0] === '主角' && segs[1] === '基础属性' && GATE_ATTRS.indexOf(segs[2]) >= 0) attrCmdIdx.push(i);
+    }
+    commands = gateStripPoolWrites(commands, function (s) { return s.length === 3 && s[0] === '主角' && s[1] === '基础属性' && s[2] === '未分配点数'; }, '未分配点数');
+    // 剥离后重建属性命令索引
+    attrCmdIdx = [];
+    for (var i2 = 0; i2 < commands.length; i2++) {
+      var s2 = gateSegsOf(commands[i2]);
+      if (s2.length === 3 && s2[0] === '主角' && s2[1] === '基础属性' && GATE_ATTRS.indexOf(s2[2]) >= 0) attrCmdIdx.push(i2);
+    }
+    if (attrCmdIdx.length) {
+      var total = 0, bad = false;
+      for (var k = 0; k < attrCmdIdx.length; k++) {
+        var cmd = commands[attrCmdIdx[k]];
+        var attr = gateSegsOf(cmd)[2];
+        var d = gateOpDelta(cmd, safeParseInt(pools.attrs[attr], 0));
+        if (d === null || d < 0) { bad = true; break; }
+        total += d;
+      }
+      if (bad) {
+        gateWarn('已拦截非法属性写入（仅允许用未分配点数提升，禁止降低或写非数值）');
+        for (var k2 = attrCmdIdx.length - 1; k2 >= 0; k2--) commands.splice(attrCmdIdx[k2], 1);
+      } else if (total > pools.attrPool) {
+        gateWarn('已拦截属性提升写入：本批合计 +' + total + '，但未分配点数只有 ' + pools.attrPool + '（只能精确写入 ≤ 余额的增量）');
+        for (var k3 = attrCmdIdx.length - 1; k3 >= 0; k3--) commands.splice(attrCmdIdx[k3], 1);
+      } else if (total > 0) {
+        var newPool = pools.attrPool - total;
+        commands.push({ type: 'set', full_match: "_.set('主角.基础属性.未分配点数', " + newPool + ')', args: ['主角.基础属性.未分配点数', newPool], reason: '点数硬门槛：自动扣除已消耗的未分配点数' });
+        console.log('[升级脚本·点数硬门槛] 属性提升 +' + total + ' 合法，未分配点数 ' + pools.attrPool + ' → ' + newPool);
+      }
+    }
+    // ── 2. 职业等级提升闸门 ──
+    var jobCmdIdx = [];
+    for (var j = 0; j < commands.length; j++) {
+      var jsegs = gateSegsOf(commands[j]);
+      if (jsegs.length === 5 && jsegs[0] === '主角' && jsegs[1] === '基础状态' && jsegs[2] === '职业信息' && jsegs[4] === '等级') jobCmdIdx.push(j);
+    }
+    gateStripPoolWrites(commands, function (s) { return s.length === 3 && s[0] === '主角' && s[1] === '基础状态' && s[2] === '待分配职业等级'; }, '待分配职业等级');
+    jobCmdIdx = [];
+    for (var j2 = 0; j2 < commands.length; j2++) {
+      var js2 = gateSegsOf(commands[j2]);
+      if (js2.length === 5 && js2[0] === '主角' && js2[1] === '基础状态' && js2[2] === '职业信息' && js2[4] === '等级') jobCmdIdx.push(j2);
+    }
+    if (jobCmdIdx.length) {
+      var jobs = pools.jobs;
+      var jTotal = 0, jBad = false;
+      for (var m = 0; m < jobCmdIdx.length; m++) {
+        var jcmd = commands[jobCmdIdx[m]];
+        var job = gateSegsOf(jcmd)[3];
+        var jd = gateOpDelta(jcmd, safeParseInt(jobs[job] && jobs[job].等级, 0));
+        if (jd === null || jd < 0) { jBad = true; break; }
+        jTotal += jd;
+      }
+      if (jBad) {
+        gateWarn('已拦截非法职业等级写入（仅允许用待分配职业等级提升，禁止降级或写非数值）');
+        for (var m2 = jobCmdIdx.length - 1; m2 >= 0; m2--) commands.splice(jobCmdIdx[m2], 1);
+      } else if (jTotal > pools.jobPool) {
+        gateWarn('已拦截职业等级提升：本批合计 +' + jTotal + ' 级，但待分配职业等级只有 ' + pools.jobPool + '（升级只能通过经验积累）');
+        for (var m3 = jobCmdIdx.length - 1; m3 >= 0; m3--) commands.splice(jobCmdIdx[m3], 1);
+      } else if (jTotal > 0) {
+        var jNewPool = pools.jobPool - jTotal;
+        commands.push({ type: 'set', full_match: "_.set('主角.基础状态.待分配职业等级', " + jNewPool + ')', args: ['主角.基础状态.待分配职业等级', jNewPool], reason: '点数硬门槛：自动扣除已消耗的待分配职业等级' });
+        console.log('[升级脚本·点数硬门槛] 职业等级 +' + jTotal + ' 合法，待分配职业等级 ' + pools.jobPool + ' → ' + jNewPool);
+      }
+    }
+  }
+
   // ---- 事件注册 ----
   const init = async () => {
     await waitGlobalInitialized('Mvu');
+    eventOn(Mvu.events.COMMAND_PARSED, gatePointSpending);
     eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, handleJobUpgrade);
     // 供状态栏「升级分配」直接改等级后手动触发成长补发（该路径不经过 VARIABLE_UPDATE_ENDED）。
     // 状态栏与脚本是不同 iframe，不能直接调 window，改用酒馆助手事件总线通信。
