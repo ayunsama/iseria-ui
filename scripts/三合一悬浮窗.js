@@ -305,14 +305,14 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         // 否则隔离生成只看到裸文本，histFloors 回看是死代码
         const user = '【角色当前状态】\n' + heroInfo + '\n\n【最近剧情】\n' + (histText || '无') + '\n\n【用户输入】\n' + userText;
         // ordered_prompts 全部为 RolePrompt = 纯自定义预设，天然不含主预设/世界书（无需 overrides）
+        // v3.2.2：实机验证 RolePrompt 对象在实机酒馆助手的 ordered_prompts 里会被丢弃（组装出空提示词），
+        // 改用开局面板已验证可用的模式：ordered_prompts=['user_input'] + 全部指令折叠进 user 文本
+        const fullPrompt = sys + '\n\n===\n\n' + user;
         const r = await generateRaw({
-            user_input: user,
+            user_input: fullPrompt,
             should_stream: false,
             should_silence: true,
-            ordered_prompts: [
-                { role: 'system', content: sys },
-                { role: 'user', content: user }
-            ]
+            ordered_prompts: ['user_input']
         });
         const text = typeof r === 'string' ? r.trim() : '';
         if (!text) console.warn('[类数据库] 三段分析返回为空（generateRaw 成功但无文本）');
