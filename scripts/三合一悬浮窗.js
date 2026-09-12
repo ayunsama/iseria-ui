@@ -222,19 +222,19 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         try { localStorage.setItem(LASTUSER_KEY, JSON.stringify({ chat: window.__iseriaDbChat ? window.__iseriaDbChat() : '', floor: floor })); } catch (e) {}
     }
     function _isFresh(stored) {
-        // 新鲜度：分析必须是当前聊天、且针对最后一条用户消息；否则视为陈旧不注入
+        // v3.1 新鲜度：仅按聊天隔离判断。分析天然比消息晚完成，若按楼层严格匹配，
+        // 常规回复（提示词在发送瞬间组装）将永远注入不到分析——只按聊天拦截跨聊天串数据。
         try {
-            const last = JSON.parse(localStorage.getItem(LASTUSER_KEY) || 'null');
-            if (!last) return true;                                   // 无记录（升级前数据）→ 放宽放行
-            if (last.chat && window.__iseriaDbChat && last.chat !== window.__iseriaDbChat()) return false;
-            return Number(stored.floor) === Number(last.floor);
-        } catch (e) { return true; }
+            const cur = window.__iseriaDbChat ? window.__iseriaDbChat() : '';
+            if (stored.chat && cur && stored.chat !== cur) return false;
+        } catch (e) {}
+        return true;
     }
     function readLatestOutput() {
         let out = null;
         try {
             const s = JSON.parse(localStorage.getItem(OUT_KEY_LS) || 'null');
-            if (s && s.text) out = { floor: Number(s.floor), text: s.text };
+            if (s && s.text) out = { chat: s.chat || '', floor: Number(s.floor), text: s.text };
         } catch (e) {}
         if (!out) {
             try {
@@ -242,7 +242,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                 const vars = TH && TH.getVariables ? TH.getVariables({ type: 'chat' }) || {} : {};
                 const outs = vars[OUT_KEY_CHAT] || vars[OUT_KEY_CHAT_OLD] || {};
                 const floors = Object.keys(outs).map(Number).sort(function (a, b) { return b - a; });
-                if (floors.length) out = { floor: floors[0], text: outs[floors[0]] || '' };
+                if (floors.length) out = { chat: '', floor: floors[0], text: outs[floors[0]] || '' };
             } catch (e) {}
         }
         return out;
@@ -361,21 +361,37 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         });
     } catch (e) {}
 
-    // ---- 监听用户发送 → 记录最后用户楼 + 入队分析 ----
+    // ---- 监听用户发送 → 记录最后用户楼（分析改到回复完成后，见 MESSAGE_RECEIVED） ----
     try {
         eventOn(tavern_events.MESSAGE_SENT, function (message) {
             try {
                 const floor = Number(message);
                 if (!(floor >= 0)) return;
                 _rememberLastUser(floor);                                      // 无论开关与否都记录（新鲜度基准）
+                // v3.2：分析不再在发送瞬间发起——独立 LLM 调用会与主生成并发抢 API，
+                // 代理并发限制会把主回复流掐断在半句话（表现为「开数据库就截断」）。
+                // 改为回复完成后分析上一条用户消息（零并发）。
+            } catch (e) {}
+        });
+    } catch (e) {}
+
+    // ---- 监听回复完成 → 分析其对应的上一条用户消息（零并发） ----
+    try {
+        eventOn(tavern_events.MESSAGE_RECEIVED, function (id) {
+            try {
                 if (!_cfgAI()) return;
-                let text = '';
-                try {
-                    const arr = (typeof getChatMessages === 'function' ? getChatMessages(floor) : null) || [];
-                    text = (Array.isArray(arr) ? arr : [arr]).map(function (x) { return x && x.mes ? String(x.mes) : ''; }).join('');
-                } catch (e2) { text = ''; }
-                if (!text || text.length < 3) return;
-                _enqueue(floor, text);
+                const replyFloor = Number(id);
+                if (!(replyFloor >= 1)) return;
+                let userFloor = -1, text = '';
+                for (let f = replyFloor - 1; f >= 0; f--) {
+                    const arr = (typeof getChatMessages === 'function' ? getChatMessages(f) : null) || [];
+                    const m = (Array.isArray(arr) ? arr : [arr])[0];
+                    if (m && m.is_user) { userFloor = f; text = String(m.mes || ''); break; }
+                }
+                if (userFloor < 0 || !text || text.length < 3) return;
+                _rememberLastUser(userFloor);
+                // 延迟数秒：避开回复结束瞬间总结助手/规划大师等自动化任务的 LLM 调用窗口
+                setTimeout(function () { _enqueue(userFloor, text); }, 3000);
             } catch (e) {}
         });
     } catch (e) {}
