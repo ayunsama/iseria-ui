@@ -304,6 +304,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         // 修复：完整上下文（角色状态+最近剧情+用户输入）必须同时进入 ordered_prompts 的 user，
         // 否则隔离生成只看到裸文本，histFloors 回看是死代码
         const user = '【角色当前状态】\n' + heroInfo + '\n\n【最近剧情】\n' + (histText || '无') + '\n\n【用户输入】\n' + userText;
+        // ordered_prompts 全部为 RolePrompt = 纯自定义预设，天然不含主预设/世界书（无需 overrides）
         const r = await generateRaw({
             user_input: user,
             should_stream: false,
@@ -311,10 +312,11 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             ordered_prompts: [
                 { role: 'system', content: sys },
                 { role: 'user', content: user }
-            ],
-            overrides: { exclude_preset: true, exclude_worldinfo: true }
+            ]
         });
-        return typeof r === 'string' ? r.trim() : '';
+        const text = typeof r === 'string' ? r.trim() : '';
+        if (!text) console.warn('[类数据库] 三段分析返回为空（generateRaw 成功但无文本）');
+        return text;
     }
 
     // ---- 串行队列：不丢并发消息 ----
@@ -340,7 +342,11 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             } catch (e3) {}
             _running = false;
             _pump();
-        }).catch(function () { _running = false; _pump(); });
+        }).catch(function (e) {
+            console.warn('[类数据库] 三段分析失败:', e && e.message ? e.message : e);
+            _running = false;
+            _pump();
+        });
     }
 
     // ---- 注入：CHAT_COMPLETION_PROMPT_READY（总开关 + 新鲜度闸门）----
