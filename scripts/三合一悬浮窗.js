@@ -1,34 +1,6 @@
 // 伊瑟利亚 · 三合一悬浮窗（内嵌版，2026-09-12：外链模式在部分网络环境不可靠，应用户要求内嵌）
 const __HUB_VER='3.2.3';
-(async () => {
-  const parseV = (c) => { const m = /__HUB_VER=['"]([\d.]+)['"]/.exec(c); return m ? m[1].split('.').map(Number) : [0,0,0]; };
-  const cur = __HUB_VER.split('.').map(Number);
-  const notOlder = (v) => { for (let i = 0; i < 3; i++) { if ((v[i]||0) !== (cur[i]||0)) return (v[i]||0) > (cur[i]||0); } return true; };
-  const hosts = ['fastly.jsdelivr.net', 'testingcf.jsdelivr.net', 'cdn.jsdelivr.net'];
-  for (const h of hosts) {
-    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
-    try {
-      const r = await fetch('https://' + h + '/gh/ayunsama/iseria-ui@main/scripts/%E4%B8%89%E5%90%88%E4%B8%80%E6%82%AC%E6%B5%AE%E7%AA%97.js' + '?t=' + Date.now(), { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined });
-      if (timer) clearTimeout(timer);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const code = await r.text();
-      if (code.length < 100000) throw new Error('内容异常 ' + code.length);
-      const v = parseV(code);
-      if (!notOlder(v)) throw new Error('镜像版本过旧 v' + v.join('.'));
-      console.log('[三合一] 使用云端版 v' + v.join('.') + ' (' + Math.round(code.length / 1024) + ' KB via ' + h + ')');
-      (0, eval)(code);
-      return;
-    } catch (e) {
-      if (timer) clearTimeout(timer);
-      console.warn('[三合一] 云端源失败，换下一个:', e && e.message);
-    }
-  }
-  console.log('[三合一] 云端均不可用/过旧，使用卡内内嵌版 v' + __HUB_VER);
-  __iseriaHubBootFull();
-})();
-
-async function __iseriaHubBootFull(){
+async function __iseriaHubBoot() {
 let e,n,t,a,r;
 {
   const _yzDeps = ['https://cdn.jsdelivr.net', 'https://fastly.jsdelivr.net', 'https://testingcf.jsdelivr.net'];
@@ -369,6 +341,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             analyzeUserMessage(job.text),
             timeoutP.then(function () { throw new Error('分析超时(90s)'); })
         ]).then(function (result) {
+            if (!result) { console.warn('[类数据库] 第' + job.floor + ' 楼分析返回空文本，不落盘不覆盖旧分析'); _running = false; _pump(); return; }
             try { localStorage.setItem(OUT_KEY_LS, JSON.stringify({ chat: window.__iseriaDbChat ? window.__iseriaDbChat() : '', floor: job.floor, text: result })); } catch (_e4) {}
             try {
                 const TH = window.TavernHelper;
@@ -586,3 +559,5 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
     }, 500);
 })();
 }
+
+__iseriaHubBoot();
