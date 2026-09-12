@@ -146,10 +146,11 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         } catch (e) { /* 静默 */ }
     }
     function floorText(floor) {
-        // 修复：MESSAGE_SENT 事件参数是楼层号，文本必须经 getChatMessages 取原文
+        // MESSAGE_SENT 事件参数是楼层号，文本必须经 getChatMessages 取原文
+        // 兼容：酒馆助手 4.9.x DTO 字段为 message；旧版为 mes
         try {
             const arr = (typeof getChatMessages === 'function' ? getChatMessages(floor) : null) || [];
-            return (Array.isArray(arr) ? arr : [arr]).map(function (x) { return x && x.mes ? String(x.mes) : ''; }).join('');
+            return (Array.isArray(arr) ? arr : [arr]).map(function (x) { const v = x && (x.message != null ? x.message : x.mes); return v != null ? String(v) : ''; }).join('');
         } catch (e) { return ''; }
     }
     function renderOutline() {
@@ -427,7 +428,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                 for (let f = replyFloor - 1; f >= 0; f--) {
                     const arr = (typeof getChatMessages === 'function' ? getChatMessages(f) : null) || [];
                     const m = (Array.isArray(arr) ? arr : [arr])[0];
-                    if (m && m.is_user) { userFloor = f; text = String(m.mes || ''); break; }
+                    if (m && m.is_user) { userFloor = f; text = String(m.message != null ? m.message : (m.mes || '')); break; }
                 }
                 if (userFloor < 0 || !text || text.length < 3) return;
                 _rememberLastUser(userFloor);
