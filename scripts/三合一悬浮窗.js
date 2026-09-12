@@ -308,6 +308,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         // v3.2.2：实机验证 RolePrompt 对象在实机酒馆助手的 ordered_prompts 里会被丢弃（组装出空提示词），
         // 改用开局面板已验证可用的模式：ordered_prompts=['user_input'] + 全部指令折叠进 user 文本
         const fullPrompt = sys + '\n\n===\n\n' + user;
+        console.log('[类数据库] 发起三段分析 generateRaw (prompt ' + fullPrompt.length + ' 字)');
         const r = await generateRaw({
             user_input: fullPrompt,
             should_stream: false,
@@ -330,7 +331,15 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         if (!_cfgAI()) { _queue = []; return; }                               // 队列排空条件：开关已关
         _running = true;
         const job = _queue.shift();
-        analyzeUserMessage(job.text).then(function (result) {
+        console.log('[类数据库] 开始三段分析: 第' + job.floor + '楼 (' + job.text.length + ' 字)');
+        // 90s 看门狗：generateRaw 若挂起不返回，队列会永久卡死且无报错——超时放行下一条
+        const timeoutP = new Promise(function (_, rej) {
+            setTimeout(function () { rej(new Error('分析超时(90s)——generateRaw 未返回')); }, 90000);
+        });
+        Promise.race([
+            analyzeUserMessage(job.text),
+            timeoutP.then(function () { throw new Error('分析超时(90s)'); })
+        ]).then(function (result) {
             try { localStorage.setItem(OUT_KEY_LS, JSON.stringify({ chat: window.__iseriaDbChat ? window.__iseriaDbChat() : '', floor: job.floor, text: result })); } catch (_e4) {}
             try {
                 const TH = window.TavernHelper;
@@ -340,6 +349,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                     TH.insertOrAssignVariables(payload, { type: 'chat' });
                 }
             } catch (e3) {}
+            console.log('[类数据库] 三段分析完成: 第' + job.floor + '楼, ' + result.length + ' 字');
             _running = false;
             _pump();
         }).catch(function (e) {
