@@ -332,7 +332,8 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         if (!_cfgAI()) { _queue = []; return; }                               // 队列排空条件：开关已关
         _running = true;
         const job = _queue.shift();
-        console.log('[类数据库] 开始三段分析: 第' + job.floor + '楼 (' + job.text.length + ' 字)');
+        const attempt = job._attempt || 0;
+        console.log('[类数据库] 开始三段分析: 第' + job.floor + '楼 (第' + (attempt + 1) + '次尝试, ' + job.text.length + ' 字)');
         // 90s 看门狗：generateRaw 若挂起不返回，队列会永久卡死且无报错——超时放行下一条
         const timeoutP = new Promise(function (_, rej) {
             setTimeout(function () { rej(new Error('分析超时(90s)——generateRaw 未返回')); }, 90000);
@@ -341,7 +342,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             analyzeUserMessage(job.text),
             timeoutP.then(function () { throw new Error('分析超时(90s)'); })
         ]).then(function (result) {
-            if (!result) { console.warn('[类数据库] 第' + job.floor + ' 楼分析返回空文本，不落盘不覆盖旧分析'); _running = false; _pump(); return; }
+            if (!result) throw new Error('分析返回空文本');
             try { localStorage.setItem(OUT_KEY_LS, JSON.stringify({ chat: window.__iseriaDbChat ? window.__iseriaDbChat() : '', floor: job.floor, text: result })); } catch (_e4) {}
             try {
                 const TH = window.TavernHelper;
@@ -351,13 +352,26 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
                     TH.insertOrAssignVariables(payload, { type: 'chat' });
                 }
             } catch (e3) {}
-            console.log('[类数据库] 三段分析完成: 第' + job.floor + '楼, ' + result.length + ' 字');
+            console.log('[类数据库] 三段分析完成: 第' + job.floor + '楼, ' + result.length + ' 字, 已落盘');
             _running = false;
             _pump();
         }).catch(function (e) {
-            console.warn('[类数据库] 三段分析失败:', e && e.message ? e.message : e);
-            _running = false;
-            _pump();
+            const msg = e && e.message ? e.message : String(e);
+            // 限流/超时/空文本 → 指数退避重试（30s/60s），最多 3 次尝试
+            if (attempt < 2 && /超时|Too Many|429|5\d\d|网络|Failed to fetch/i.test(msg)) {
+                const delay = 30000 * (attempt + 1);
+                console.warn('[类数据库] 第' + job.floor + ' 楼分析失败（' + msg + '），' + delay / 1000 + ' 秒后重试');
+                _running = false;
+                setTimeout(function () {
+                    job._attempt = attempt + 1;
+                    _queue.push(job);
+                    _pump();
+                }, delay);
+            } else {
+                console.warn('[类数据库] 已放弃第 ' + job.floor + ' 楼分析:', msg);
+                _running = false;
+                _pump();
+            }
         });
     }
 
