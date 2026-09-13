@@ -447,7 +447,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             const out = readLatestOutput();
             if (out && Number(out.floor) === Number(last.floor)) return;       // 已有最新分析
             const arr = (typeof getChatMessages === 'function' ? getChatMessages(last.floor) : null) || [];
-            const text = (Array.isArray(arr) ? arr : [arr]).map(function (x) { return x && x.mes ? String(x.mes) : ''; }).join('');
+            const text = (Array.isArray(arr) ? arr : [arr]).map(function (x) { const v = x && (x.message != null ? x.message : x.mes); return v != null ? String(v) : ''; }).join('');
             if (text && text.length >= 3) _enqueue(last.floor, text);
         } catch (e) {}
     };
