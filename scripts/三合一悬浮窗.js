@@ -1,5 +1,5 @@
 // 伊瑟利亚 · 三合一悬浮窗（内嵌版，2026-09-12：外链模式在部分网络环境不可靠，应用户要求内嵌）
-const __HUB_VER='3.3.0';
+const __HUB_VER='3.4.0';
 async function __iseriaHubBoot() {
 let e,n,t,a,r;
 {
@@ -55,7 +55,8 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             histFloors: Number(c.histFloors) > 0 ? Number(c.histFloors) : 30,
             dbApiUrl: typeof c.dbApiUrl === 'string' ? c.dbApiUrl : 'https://gcli.ggchan.dev/v1',
             dbApiKey: typeof c.dbApiKey === 'string' && c.dbApiKey ? c.dbApiKey : '',
-            dbModel: typeof c.dbModel === 'string' && c.dbModel ? c.dbModel : 'gemini-3-flash-preview'
+            dbModel: typeof c.dbModel === 'string' && c.dbModel ? c.dbModel : 'gemini-3-flash-preview',
+            dbLocalAgent: c.dbLocalAgent !== false
         };
     } catch (e) { return { enabled: false, segIndex: true, segAI: true, idxMax: 400, histFloors: 30 }; }
 };
@@ -326,8 +327,26 @@ function __yzPromptChat(payload) {
         // v3.2.2：实机验证 RolePrompt 对象在实机酒馆助手的 ordered_prompts 里会被丢弃（组装出空提示词），
         // 改用开局面板已验证可用的模式：ordered_prompts=['user_input'] + 全部指令折叠进 user 文本
         const fullPrompt = sys + '\n\n===\n\n' + user;
-        console.log('[类数据库] 发起三段分析 generateRaw (prompt ' + fullPrompt.length + ' 字)');
         const cfgA = window.__iseriaDbCfg ? window.__iseriaDbCfg() : {};
+        if (cfgA.dbLocalAgent !== false) {
+            // v3.4：三段分析走本地 Agent 桥（127.0.0.1:8777）——零配额，由本地规则引擎+ZCode 作答
+            const bid = 'db-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+            console.log('[类数据库] 发起三段分析 → 本地 Agent 桥 (prompt ' + fullPrompt.length + ' 字, id ' + bid + ')');
+            const askRes = await fetch('http://127.0.0.1:8777/api/dbask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: bid, prompt: fullPrompt }) });
+            if (!askRes.ok) throw new Error('dbask HTTP ' + askRes.status);
+            const deadline = Date.now() + 300000;   // 5 分钟：等 ZCode 会话内作答，超时按设计放弃
+            while (Date.now() < deadline) {
+                await new Promise(function (rs) { setTimeout(rs, 3000); });
+                const pr = await fetch('http://127.0.0.1:8777/api/dbpoll/' + bid);
+                const pj = await pr.json();
+                if (pj && typeof pj.text === 'string') {
+                    console.log('[类数据库] 本地 Agent 已回复（' + pj.text.length + ' 字）');
+                    return pj.text.trim();
+                }
+            }
+            throw new Error('本地 Agent 分析超时(300s)——ZCode 不在会话中');
+        }
+        console.log('[类数据库] 发起三段分析 generateRaw (prompt ' + fullPrompt.length + ' 字)');
         const genCfg = {
             user_input: fullPrompt,
             should_stream: false,
@@ -552,7 +571,8 @@ function __yzPromptChat(payload) {
             +'<button id="db-rebuild" type="button" style="cursor:pointer;border:1px solid rgba(122,90,44,.4);background:linear-gradient(160deg,#ffefc8,#ffe0a0);border-radius:8px;padding:3px 10px;font-size:11px;color:#5a3a1a;">🔄 重建索引</button>'
             +'</div>'
             +'<div style="border-top:1px dashed rgba(122,90,44,.3);margin-top:6px;padding-top:6px;">'
-            +'<div style="font-size:11px;color:#8a6f45;margin-bottom:4px;">三段分析独立 API（避开主生成限流；留空=走当前酒馆 API）</div>'
+            +'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:bold;margin-bottom:4px;"><input type="checkbox" data-db="dbLocalAgent"'+(c.dbLocalAgent!==false?' checked':'')+'> 🤖 三段分析走本地 Agent（零配额，需 8777 服务器）</label>'
+            +'<div style="font-size:11px;color:#8a6f45;margin-bottom:4px;">关闭后走下方独立 API / 酒馆主 API（消耗配额）</div>'
             +'<div style="display:flex;flex-direction:column;gap:4px;">'
             +'<label style="display:flex;align-items:center;gap:5px;">模型 <input type="text" data-dbtext="dbModel" value="'+escDb(c.dbModel)+'" style="flex:1;min-width:0;"></label>'
             +'<label style="display:flex;align-items:center;gap:5px;">API <input type="text" data-dbtext="dbApiUrl" value="'+escDb(c.dbApiUrl)+'" style="flex:1;min-width:0;"></label>'
