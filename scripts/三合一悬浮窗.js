@@ -438,6 +438,11 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
         });
     } catch (e) {}
 
+    // ---- 兜底扫描：iframe 会随聊天更新重启，RECEIVED 事件可能被错过——
+    //      启动后 8 秒 + 每 60 秒自动核对最后用户楼，缺分析就补（配 custom_api 独立通道，不占主生成配额）----
+    setTimeout(function () { try { if (window.__iseriaDbTopUp) window.__iseriaDbTopUp(); } catch (e) {} }, 8000);
+    setInterval(function () { try { if (window.__iseriaDbTopUp) window.__iseriaDbTopUp(); } catch (e) {} }, 60000);
+
     // ---- 开启总开关时，对最后一条用户消息立即补一次分析 ----
     window.__iseriaDbTopUp = function () {
         try {
