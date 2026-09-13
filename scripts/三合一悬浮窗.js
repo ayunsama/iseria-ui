@@ -88,6 +88,12 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
     } catch (e) { return ''; }
 };
 
+function __yzPromptChat(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.chat)) return payload.chat;
+    return null;
+}
+
 // ===== 类数据库输出 · 历史索引器 v3（轻量规则抽取，不调 AI）=====
 // 每楼自动索引：出场人物 / 地点 → script 变量持久化（iseria_history_index）；
 // CHAT_COMPLETION_PROMPT_READY 注入【历史索引纲要】（独立哨兵防重）；总开关+segIndex 双闸门。
@@ -191,9 +197,10 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             } catch (e) {}
         });
         // 注入：CHAT_COMPLETION_PROMPT_READY 独立哨兵
-        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, function (chat) {
+        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, function (payload) {
             try {
-                if (!Array.isArray(chat)) return;
+                const chat = __yzPromptChat(payload);
+                if (!chat) return;
                 if (!_cfgOn()) return;
                 for (const m of chat) { if (m && m.role === 'system' && String(m.content || '').indexOf('【历史索引纲要') !== -1) return; }
                 const o = renderOutline();
@@ -387,9 +394,10 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
 
     // ---- 注入：CHAT_COMPLETION_PROMPT_READY（总开关 + 新鲜度闸门）----
     try {
-        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, function (chat) {
+        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, function (payload) {
             try {
-                if (!Array.isArray(chat) || !chat.length) return;
+                const chat = __yzPromptChat(payload);
+                if (!chat) return;
                 const c = window.__iseriaDbCfg ? window.__iseriaDbCfg() : { enabled: false };
                 if (!c.enabled) return;                                        // 修复：注入此前不看总开关
                 for (const m of chat) {
