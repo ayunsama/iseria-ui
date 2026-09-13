@@ -1,5 +1,5 @@
 // 伊瑟利亚 · 三合一悬浮窗（内嵌版，2026-09-12：外链模式在部分网络环境不可靠，应用户要求内嵌）
-const __HUB_VER='3.4.0';
+const __HUB_VER='3.4.1';
 async function __iseriaHubBoot() {
 let e,n,t,a,r;
 {
@@ -268,6 +268,11 @@ function __yzPromptChat(payload) {
     }
     window.__iseriaDbReadOutput = readLatestOutput;   // 供控制面板/调试读取
 
+
+    function _isInterfaceFloor(text) {
+        // 创建器/界面楼层（首页/开局）不产生分析请求——只审真实剧情楼层
+        return /<首页|<开局|<StatusPlaceHolderImpl/.test(String(text || ''));
+    }
     // ---- AI 调用：解析用户消息 → 三段上下文 ----
     async function analyzeUserMessage(userText) {
         const TH = window.TavernHelper;
@@ -469,7 +474,7 @@ function __yzPromptChat(payload) {
                     if (m && m.is_user) { userFloor = f; text = String(m.message != null ? m.message : (m.mes || '')); break; }
                 }
                 if (userFloor < 0 || !text || text.length < 3) return;
-                _rememberLastUser(userFloor);
+                if (_isInterfaceFloor(text)) return;
                 // 延迟数秒：避开回复结束瞬间总结助手/规划大师等自动化任务的 LLM 调用窗口
                 setTimeout(function () { _enqueue(userFloor, text); }, 3000);
             } catch (e) {}
@@ -491,7 +496,7 @@ function __yzPromptChat(payload) {
             if (out && Number(out.floor) === Number(last.floor)) return;       // 已有最新分析
             const arr = (typeof getChatMessages === 'function' ? getChatMessages(last.floor) : null) || [];
             const text = (Array.isArray(arr) ? arr : [arr]).map(function (x) { const v = x && (x.message != null ? x.message : x.mes); return v != null ? String(v) : ''; }).join('');
-            if (text && text.length >= 3) _enqueue(last.floor, text);
+            if (text && text.length >= 3 && !_isInterfaceFloor(text)) _enqueue(last.floor, text);
         } catch (e) {}
     };
 })();
