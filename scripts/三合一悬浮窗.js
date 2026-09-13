@@ -1,5 +1,5 @@
 // 伊瑟利亚 · 三合一悬浮窗（内嵌版，2026-09-12：外链模式在部分网络环境不可靠，应用户要求内嵌）
-const __HUB_VER='3.2.5';
+const __HUB_VER='3.3.0';
 async function __iseriaHubBoot() {
 let e,n,t,a,r;
 {
