@@ -25,7 +25,7 @@ function onDbToggle(e){
     const vars=TH.getVariables?TH.getVariables({type:'script',script_id:sid})||{}:{};
     vars['类数据库开关']=e.target?e.target.checked:true;
     if(TH.replaceVariables)TH.replaceVariables(vars,{type:'script',script_id:sid});
-    try{n.updateSettings({'类数据库':e.target?e.target.checked:true})}catch(_e){}
+    try{n.updateSettings({'类数据库':e.target?e.target.checked:true})}catch(_e){}try{const _ck=!!(e.target&&e.target.checked);const _c=(function(){try{return JSON.parse(localStorage.getItem('iseria_db_cfg')||'{}')||{}}catch(_pe){return{}}})();_c.enabled=_ck;localStorage.setItem('iseria_db_cfg',JSON.stringify(_c));const _v=TH.getVariables?TH.getVariables({type:'script',script_id:sid})||{}:{};_v['类数据库配置']=_c;if(TH.replaceVariables)TH.replaceVariables(_v,{type:'script',script_id:sid});if(window.__iseriaDbTopUp&&_ck)window.__iseriaDbTopUp();}catch(_e2){}
     toastr.success(e.target&&e.target.checked?'📊 已开启':'📊 已关闭','类数据库');
   }catch(err){toastr.error('切换失败: '+err.message,'剧情规划大师')}
 }
@@ -54,7 +54,7 @@ async function onClearPlanMenu(){const v=prompt('清空哪一部分？（输入�
             idxMax: Number(c.idxMax) > 0 ? Number(c.idxMax) : 400,
             histFloors: Number(c.histFloors) > 0 ? Number(c.histFloors) : 30,
             dbApiUrl: typeof c.dbApiUrl === 'string' ? c.dbApiUrl : 'https://gcli.ggchan.dev/v1',
-            dbApiKey: typeof c.dbApiKey === 'string' && c.dbApiKey ? c.dbApiKey : 'gg-gcli-JBBs5SIspKhufjGhlxBtpdAvlfLWBtrE261zklzsYEc',
+            dbApiKey: typeof c.dbApiKey === 'string' && c.dbApiKey ? c.dbApiKey : '',
             dbModel: typeof c.dbModel === 'string' && c.dbModel ? c.dbModel : 'gemini-3-flash-preview'
         };
     } catch (e) { return { enabled: false, segIndex: true, segAI: true, idxMax: 400, histFloors: 30 }; }
@@ -137,7 +137,12 @@ function __yzPromptChat(payload) {
         try {
             const TH = window.TavernHelper;
             const cap = (window.__iseriaDbCfg ? window.__iseriaDbCfg().idxMax : MAX_DETAIL) || MAX_DETAIL;
-            if (TH && TH.replaceVariables) TH.replaceVariables({ [IDX_KEY]: a.slice(-cap) }, { type: 'script', script_id: (typeof getScriptId === 'function' ? getScriptId() : '') });
+            if (TH && TH.replaceVariables) {
+                const sid1 = (typeof getScriptId === 'function' ? getScriptId() : '');
+                const cur1 = TH.getVariables ? (TH.getVariables({ type: 'script', script_id: sid1 }) || {}) : {};
+                cur1[IDX_KEY] = a.slice(-cap);
+                TH.replaceVariables(cur1, { type: 'script', script_id: sid1 });
+            }
         } catch (e) {}
     }
     function indexOne(floor, dir, text) {
@@ -225,6 +230,7 @@ function __yzPromptChat(payload) {
     const _sentinel = '【类数据库输出】';
     let _queue = [];          // 待分析队列（串行，不再丢并发消息）
     let _running = false;
+    let _runningFloor = -1;   // 正在分析的楼层（防兜底轮询重复入队）
 
     function _cfgAI() {
         const c = window.__iseriaDbCfg ? window.__iseriaDbCfg() : { enabled: false, segAI: false };
@@ -340,6 +346,7 @@ function __yzPromptChat(payload) {
 
     // ---- 串行队列：不丢并发消息 ----
     function _enqueue(floor, text) {
+        if (_running && _runningFloor === floor) return;                      // 该楼正在分析，勿重复入队
         _queue = _queue.filter(function (j) { return j.floor !== floor; });   // 同楼去重
         _queue.push({ floor: floor, text: text });
         _pump();
@@ -349,6 +356,7 @@ function __yzPromptChat(payload) {
         if (!_cfgAI()) { _queue = []; return; }                               // 队列排空条件：开关已关
         _running = true;
         const job = _queue.shift();
+        _runningFloor = job.floor;
         const attempt = job._attempt || 0;
         console.log('[类数据库] 开始三段分析: 第' + job.floor + '楼 (第' + (attempt + 1) + '次尝试, ' + job.text.length + ' 字)');
         // 90s 看门狗：generateRaw 若挂起不返回，队列会永久卡死且无报错——超时放行下一条
@@ -371,6 +379,7 @@ function __yzPromptChat(payload) {
             } catch (e3) {}
             console.log('[类数据库] 三段分析完成: 第' + job.floor + '楼, ' + result.length + ' 字, 已落盘');
             _running = false;
+            _runningFloor = -1;
             _pump();
         }).catch(function (e) {
             const msg = e && e.message ? e.message : String(e);
@@ -385,8 +394,10 @@ function __yzPromptChat(payload) {
                     _pump();
                 }, delay);
             } else {
+                if (window.toastr) window.toastr.warning('三段分析失败已放弃：' + msg, '📊 类数据库');
                 console.warn('[类数据库] 已放弃第 ' + job.floor + ' 楼分析:', msg);
                 _running = false;
+                _runningFloor = -1;
                 _pump();
             }
         });
@@ -604,7 +615,7 @@ function __yzPromptChat(payload) {
             if (!host) return;                       // tab 未打开（UI在父页面文档，必须用ys()）
             if (host.dataset.dbInit === '1') {       // 已渲染，仅刷新状态行
                 const st = ys().getElementById('db-status');
-                if (st && st.textContent.indexOf('已索引') === -1) st.textContent = _fmtStatus();
+                if (st) { const _ns = _fmtStatus(); if (st.textContent !== _ns) st.textContent = _ns; }
                 return;
             }
             _renderInto(host);
