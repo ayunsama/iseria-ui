@@ -1202,6 +1202,13 @@
                 <!-- ===== 开场白预设按钮区 ===== -->
                 <div class="jrpg-opening-presets">
                     <div class="jrpg-opening-title">📖 选择开场白 · 命运的起点</div>
+                    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0 10px;font-size:12px;color:#6b5433;">
+                        <span>🕰️ 开局年份：</span>
+                        <input type="number" id="iz-start-year" min="1400" max="1497" step="1" value="1497"
+                               style="width:90px;padding:3px 6px;border:1px solid #8b6b4a;border-radius:6px;background:#fdf6e3;color:#3a2c15;font-weight:bold;"
+                               onchange="izSaveStartYear(this.value)">
+                        <span style="opacity:.8;">年（越早魔王降临越远，默认1497）</span>
+                    </div>
                     <div class="jrpg-opening-grid">
                         <button class="jrpg-opening-btn" onclick="applyOpeningPreset(1)" id="open-btn-1">
                             <span class="open-icon">👶</span>
@@ -4483,6 +4490,25 @@ function applyDemonPreset() {
 // ============================================================
 //  开场白预设按钮切换
 // ============================================================
+// ── 自定义开局年份（默认1497；写入 世界.日期 供 AI/纪元触发器遵守）──
+function izStartYear() {
+  try {
+    var v = parseInt(localStorage.getItem('iseria_start_year'), 10);
+    if (v >= 1400 && v <= 1497) return v;
+  } catch (e) {}
+  return 1497;
+}
+function izSaveStartYear(v) {
+  var n = parseInt(v, 10);
+  if (!(n >= 1400 && n <= 1497)) { n = 1497; var el = document.getElementById('iz-start-year'); if (el) el.value = 1497; }
+  try { localStorage.setItem('iseria_start_year', String(n)); } catch (e) {}
+  var sp = document.getElementById('iz-yr-longju');
+  if (sp) sp.textContent = izYearStr();
+  if (window.toastr) window.toastr.success('开局年份已设为 圣光历' + n + ' 年', '🕰️');
+}
+function izYearStr() { return '圣光历' + izStartYear() + '年'; }
+(function () { var sp = document.getElementById('iz-yr-longju'); if (sp) sp.textContent = izYearStr(); })();
+
 function applyOpeningPreset(index) {
     // 清除所有按钮的active状态
     for (var i = 1; i <= 8; i++) {
@@ -4860,7 +4886,7 @@ function applyRiftGatePreset() {
     updateClass();
     calcStats();
 
-    alert('🗝️ 已切换为「裂隙门钥」开场白！\n你是梅萨利亚港的底层苦力，在搁浅走私船底舱捡到传说级奇物「万界门钥」，一道通往异界宝藏的裂隙之门为你敞开。\n人类 / Lv1无职业 / 卡兰蒂亚·梅萨利亚港 / 圣光历1497年。');
+    alert('🗝️ 已切换为「裂隙门钥」开场白！\n你是梅萨利亚港的底层苦力，在搁浅走私船底舱捡到传说级奇物「万界门钥」，一道通往异界宝藏的裂隙之门为你敞开。\n人类 / Lv1无职业 / 卡兰蒂亚·梅萨利亚港 / 圣光历' + izYearStr() + '年。');
 }
 
 // ============================================================
@@ -5465,7 +5491,7 @@ function applyUndyingPreset() {
             var identityText = document.getElementById('cc-identity');
             if (identityText) {
                 identityText.value =
-                    '你乃大炎龙朝炎脉龙裔，身负炎祖血脉，瞳色赤金，本应位居龙血九品之上。然而圣光历1497年，龙脉异变骤起，炎祖心炉变色，三子夺嫡之祸波及朝野。\n\n' +
+                    '你乃大炎龙朝炎脉龙裔，身负炎祖血脉，瞳色赤金，本应位居龙血九品之上。然而圣光历' + izYearStr() + '年，龙脉异变骤起，炎祖心炉变色，三子夺嫡之祸波及朝野。\n\n' +
                     '你因血脉异变被卷入政治漩涡，被迫逃离帝都长炎城，流落至大炎边境。身上仅剩一柄传承龙骨短剑、一枚褪色的龙纹玉佩，以及炎祖赐予的微弱龙炎之力。\n\n' +
                     '你深知，唯有寻回炎祖意志的认可，或找到平息龙脉异变的秘法，才能重回故土，解开自身血脉的谜团。然而，异乡的风土与危险，正等待着你。';
             }
@@ -11036,9 +11062,10 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
                           stat.英灵.状态 = '沉睡';
                       }
                       
-mvuData.stat_data = stat;
+                      mvuData.stat_data = stat;
+                      try { if (mvuData.stat_data.世界) mvuData.stat_data.世界.日期 = izYearStr() + '1月1日'; } catch (e) {}
                       Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
-                      console.log('✅ 已自动将角色数据写入 MVU 变量');
+                      console.log('✅ 已自动将角色数据写入 MVU 变量（开局日期 ' + (mvuData.stat_data.世界 ? mvuData.stat_data.世界.日期 : '?') + '）');
                   } catch (e) {
                       console.error('自动写入 MVU 变量失败:', e);
                   }
@@ -12660,7 +12687,7 @@ mvuData.stat_data = stat;
                     <b>选官：</b>龙脉试——融合科举与血脉测试的三关选拔制度。<br>
                     <b>宗教：</b>龙道，炎祖崇拜，分炎宗/脉宗/灰宗三支。<br>
                     <b>特色职业：</b>炎术士（火焰魔法）、炎祖祭司（神术治愈）、炎脉武士（龙血近战）、铁冠卫（重装战阵）。<br>
-                    <b>当前局势：</b>圣光历1497年，龙脉异变，炎祖心炉变色，三子夺嫡，南岭发现先民传送门遗迹。<br>
+                    <b>当前局势：</b><span id="iz-yr-longju">圣光历1497年</span>，龙脉异变，炎祖心炉变色，三子夺嫡，南岭发现先民传送门遗迹。<br>
                     <br>详细设定已同步至世界书条目，可在酒馆世界书中查看。
                 `;
             } else {
