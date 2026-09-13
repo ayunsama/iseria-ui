@@ -358,8 +358,10 @@
 
   // ---- 事件注册 ----
   const init = async () => {
-    await waitGlobalInitialized('Mvu');
-    eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, handleTension);
+    // ★ 手机端修复：按钮/注入/回响的注册不再被 Mvu 初始化等待阻塞——
+    //   此前整个 init 先 await waitGlobalInitialized('Mvu')，手机端若 Mvu 就绪信号迟迟不来，
+    //   「🗞️ 世界动态」按钮就永远不会注册（世界动态完全无法显示的直接原因）。
+    //   窗口读数据有 readStatData → getVariables 兜底，本身不依赖 Mvu。
     // 正文注入：世界动态 → AI 上下文（开关存 localStorage）
     loadInjectSettings();
     registerWorldInjection();
@@ -383,6 +385,11 @@
     }
     console.log('[紧张度托管脚本] 已加载（动态新闻驱动 · 基线重算覆盖 · IF线反转 · 羊皮纸窗口）');
     if (typeof toastr !== 'undefined') toastr.success('[紧张度托管脚本] 已加载');
+    // 紧张度自动结算依赖 Mvu 事件：等待失败只停用结算托管，不拖垮窗口与注入
+    try {
+      await waitGlobalInitialized('Mvu');
+      eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, handleTension);
+    } catch (e) { console.warn('[紧张度] Mvu 不可用，紧张度自动结算停用:', e); }
   };
 
   // ============================================================
@@ -1205,6 +1212,15 @@
 
   // ---- 打开 / 关闭窗口 ----
   async function openTensionWindow() {
+    try {
+      await openTensionWindowInner();
+    } catch (e) {
+      // 失败必须可见：静默吞错=手机端"点了没反应、完全无法显示"且无从排查
+      console.error('[紧张度] 世界动态窗口打开失败:', e);
+      try { if (typeof toastr !== 'undefined') toastr.error('世界动态窗口打开失败: ' + ((e && e.message) || e)); } catch (_) {}
+    }
+  }
+  async function openTensionWindowInner() {
     closeTensionWindow();
     const d = extractTensionData(readStatData());
     // ★ 分工（v2）：世界态势不再从旧《动态剧情》条目读取（由「纪元触发器」输出），窗口/注入只保留数值与现状层

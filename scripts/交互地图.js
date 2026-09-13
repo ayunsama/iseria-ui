@@ -15,11 +15,23 @@
     const win = (window.parent && window.parent.window) || window;
     if (pdoc.getElementById('isx-fab')) return; // 防重复注入
 
-    // ===== 地图图片：从公开 CDN 加载原图（高清）=====
-    const CDN_MAPS = 'https://cdn.jsdelivr.net/gh/ayunsama/iseria-ui@main/maps';
-    const IMG = {};
-    for (const k of ['base','aether','albion','dornheim','empire','kallantia','morgana','nereitin','niflheim','silvantir','ulkan','urgat']) {
-        IMG[k] = CDN_MAPS + '/' + k + '.jpg';
+    // ===== 地图图片：公开 CDN 多镜像加载 =====
+    // 手机网络对单一 jsDelivr 域常不可达（DNS 污染/限流），此前图片加载失败=整个地图空白且无任何提示；
+    // 现逐镜像回退（cdn→fastly→testingcf，与卡内加载器同款镜像序列），全部失败时窗口内给出可点击重试的提示
+    const MAP_MIRRORS = [
+        'https://cdn.jsdelivr.net/gh/ayunsama/iseria-ui@main/maps/',
+        'https://fastly.jsdelivr.net/gh/ayunsama/iseria-ui@main/maps/',
+        'https://testingcf.jsdelivr.net/gh/ayunsama/iseria-ui@main/maps/',
+    ];
+    function loadMapImg(imgEl, key, onDone) {
+        let i = 0;
+        imgEl.onload = () => onDone && onDone(true);
+        imgEl.onerror = () => {
+            i++;
+            if (i < MAP_MIRRORS.length) imgEl.src = MAP_MIRRORS[i] + key + '.jpg';
+            else onDone && onDone(false);
+        };
+        imgEl.src = MAP_MIRRORS[0] + key + '.jpg';
     }
 
     // ===== 样式（全部收拢在 #isx-overlay 作用域内，避免污染酒馆页面）=====
@@ -36,19 +48,11 @@
   overflow:hidden; user-select:none;
 }
 #isx-overlay.dragging{ transform:none; }
-@media (max-width:786px){
-  #isx-overlay{
-    left:0 !important; top:0 !important; right:0; bottom:0;
-    transform:none !important; width:100vw; height:100vh; height:100dvh;
-    border-radius:0; padding:6px;
-  }
-  #isx-overlay.dragging{ transform:none !important; }
-}
 #isx-overlay, #isx-overlay *{box-sizing:border-box;}
 #isx-overlay *{margin:0; padding:0;}
 #isx-app{display:flex; flex-direction:column; height:100%; padding:10px 12px; gap:8px;}
 #isx-topbar{
-  display:flex; align-items:center; gap:14px; padding:8px 16px; cursor:grab;
+  display:flex; align-items:center; gap:14px; padding:8px 16px; cursor:grab; touch-action:none;
   background:linear-gradient(180deg,#f7f0de,#ecdfc0);
   border:2px solid var(--isx-line); border-radius:4px;
   box-shadow:0 2px 0 #cbb487, inset 0 0 18px rgba(138,111,69,.12);
@@ -175,9 +179,13 @@
 #isx-compass{position:absolute; right:14px; top:12px; z-index:20; width:64px; height:64px; opacity:.85; pointer-events:none;}
 #isx-hint{position:absolute; left:50%; bottom:6px; transform:translateX(-50%); font-size:11px; color:var(--isx-ink2);
   background:rgba(247,240,222,.7); padding:1px 10px; border-radius:10px; z-index:15; letter-spacing:1px;}
+#isx-loadhint{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); z-index:35; display:none;
+  background:rgba(28,22,14,.85); color:#f0e2bd; font-size:13px; letter-spacing:1px; white-space:nowrap;
+  padding:9px 20px; border-radius:6px; border:1px solid var(--isx-gold); pointer-events:auto; cursor:default;}
+#isx-loadhint.err{color:#ffb9a8; border-color:#a0402a; cursor:pointer;}
 #isx-fab{
   position:fixed; left:50%; top:50%; margin:-23px 0 0 -23px; z-index:99991; width:46px; height:46px;
-  display:flex; align-items:center; justify-content:center; cursor:grab; font-size:22px;
+  display:flex; align-items:center; justify-content:center; cursor:grab; font-size:22px; touch-action:none;
   background:linear-gradient(180deg,#f7f0de,#d8c79e); color:#5e4420;
   border:2px solid var(--isx-gold); border-radius:50%;
   box-shadow:0 3px 10px rgba(0,0,0,.4), inset 0 0 10px rgba(184,137,42,.35);
@@ -196,6 +204,37 @@
   background:linear-gradient(180deg,#f7f0de,#e4d6b4); border:1.5px solid var(--isx-line); border-radius:4px;
 }
 #isx-zoomctl button:hover{border-color:var(--isx-gold);}
+/* ★ 手机端适配（必须位于所有基础规则之后：media 内规则与基础规则同特异性，后声明者胜） */
+@media (max-width:786px){
+  #isx-overlay{
+    left:0 !important; top:0 !important; right:0; bottom:0;
+    transform:none !important; width:100vw; height:100vh; height:100dvh;
+    border-radius:0; padding:6px;
+  }
+  #isx-overlay.dragging{ transform:none !important; }
+  /* 顶栏两行化：修复手机端 legend 被挤成 ~50px 宽竖排（600px+ 高）把地图区挤到不足 200px、
+     mapframe 首算为 0×0 → "打开后看不到地图" */
+  #isx-topbar{ flex-wrap:wrap; gap:6px 10px; padding:6px 10px; }
+  #isx-grip{ display:none; }
+  #isx-title{ font-size:15px; letter-spacing:2px; }
+  #isx-title small{ display:none; }
+  #isx-breadcrumb{ font-size:12px; }
+  #isx-legend{ order:9; flex-basis:100%; margin-left:0; flex-wrap:wrap; gap:4px; }
+  #isx-legend .lg{ flex:0 0 auto; font-size:10px; padding:2px 6px; }
+  #isx-legend .lg svg{ width:12px; height:12px; }
+  #isx-closebtn{ margin-left:auto; }
+  /* 手机端密度：地图 frame 缩到 ~350px 宽，固定 px 的名牌/据点必须同步缩小，否则互相堆叠遮挡 */
+  #isx-overlay .hot .nametag{ padding:2px 7px; border-width:1px; }
+  #isx-overlay .hot .nametag b{ font-size:10px; letter-spacing:1px; }
+  #isx-overlay .hot .nametag b .star{ margin-right:2px; }
+  #isx-overlay .hot .nametag span{ font-size:8px; letter-spacing:0; margin-top:0; }
+  #isx-overlay .pt .mk{ width:20px; height:20px; }
+  #isx-overlay .pt .lbl{ font-size:8.5px; top:22px; padding:0 3px; line-height:12px; }
+  #isx-overlay .pt.capital .mk{ width:25px; height:25px; }
+  #isx-overlay .pt.capital .lbl{ font-size:10px; top:27px; }
+  #isx-zoomctl button{ width:34px; height:34px; }
+  #isx-hint{ font-size:10px; }
+}
 `;
 
     // ===== 浮层结构（id 均带 isx- 前缀）=====
@@ -269,6 +308,13 @@
             const ft = Math.min(pdoc.documentElement.clientHeight - 46, Math.max(0, savedFab.top));
             fab.style.left = fl + 'px';
             fab.style.top = ft + 'px';
+            fab.style.right = 'auto';
+            fab.style.bottom = 'auto';
+        } else if (pdoc.documentElement.clientWidth <= 786) {
+            // 手机端无历史位置时默认右下角（桌面端默认居中）：不挡正文，且在 thumb 可及范围
+            const vw = pdoc.documentElement.clientWidth, vh = pdoc.documentElement.clientHeight;
+            fab.style.left = (vw - 62) + 'px';
+            fab.style.top = (vh - 170) + 'px';
             fab.style.right = 'auto';
             fab.style.bottom = 'auto';
         }
@@ -573,7 +619,8 @@ function renderWorld(){
 let curRegion=null;
 function enterRegion(id){
   const r=REGIONS[id]; if(!r) return; curRegion=id;
-  $('#isx-regionImg').src=IMG[r.img];
+  _lastRegionKey=r.img;
+  loadTrack($('#isx-regionImg'), r.img);
   $('#isx-riName').textContent=r.name; $('#isx-riMeta').textContent=r.meta; $('#isx-riDesc').textContent=r.desc;
   $('#isx-regionInfo').classList.add('show');
   ptBox.innerHTML='';
@@ -666,8 +713,36 @@ pdoc.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeDlg();} });
 
 
     // ===== 悬浮窗接线：开关 / 缩放 / 平移（stageWrap/$ 由上方原地图逻辑定义）=====
-    // 底图源（原HTML内联src已在模板化时移除，改由内嵌dataURI提供）
-    $('#isx-baseImg').src = IMG.base;
+    // ===== 图片加载状态提示：CDN 慢/全挂时给出可见反馈，而不是一片空白 =====
+    const loadHint = pdoc.createElement('div');
+    loadHint.id = 'isx-loadhint';
+    stageWrap.appendChild(loadHint);
+    let _loadPending = 0, _loadFailed = false, _lastRegionKey = null;
+    function loadTrack(imgEl, key) {
+        _loadPending++;
+        renderLoadHint();
+        loadMapImg(imgEl, key, (ok) => { _loadPending--; if (!ok) _loadFailed = true; renderLoadHint(); });
+    }
+    function renderLoadHint() {
+        if (_loadPending > 0) {
+            loadHint.textContent = '⏳ 地图加载中…';
+            loadHint.classList.remove('err');
+            loadHint.style.display = '';
+        } else if (_loadFailed) {
+            loadHint.textContent = '✕ 地图加载失败（网络受限）· 点此重试';
+            loadHint.classList.add('err');
+            loadHint.style.display = '';
+        } else {
+            loadHint.style.display = 'none';
+        }
+    }
+    loadHint.addEventListener('click', () => {
+        if (_loadPending > 0) return;
+        _loadFailed = false;
+        loadTrack($('#isx-baseImg'), 'base');
+        if (_lastRegionKey) loadTrack($('#isx-regionImg'), _lastRegionKey);
+    });
+    loadTrack($('#isx-baseImg'), 'base');
     function toggleMap(force) {
         const show = force !== undefined ? force : ov.style.display === 'none';
         if (show) {
@@ -675,7 +750,12 @@ pdoc.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeDlg();} });
             ov.classList.remove('dragging');
             ov.style.left = ''; ov.style.top = ''; ov.style.transform = '';
             ov.style.display = 'flex';
+            // fitFrame 多重兜底：首帧布局未稳时 mapframe 会被写成 0×0（手机端"看不到地图"的直接原因），
+            // 且脚本运行在隐藏 iframe 时 rAF 可能被浏览器暂停——用双重 rAF + setTimeout 保证补算
             requestAnimationFrame(() => fitFrame());
+            requestAnimationFrame(() => requestAnimationFrame(() => fitFrame()));
+            setTimeout(() => fitFrame(), 120);
+            setTimeout(() => fitFrame(), 450);
         } else {
             ov.style.display = 'none';
         }
@@ -731,6 +811,29 @@ pdoc.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeDlg();} });
         _fabDrag = false;
     }
     pdoc.addEventListener('mouseup', fabDragEnd);
+    // 触摸拖动（手机端）：tap 不阻止合成 click（仍可开关地图）；拖动中 preventDefault 抑制页面滚动与合成鼠标事件
+    fab.addEventListener('touchstart', e => {
+        if (e.touches.length !== 1) return;
+        const t = e.touches[0];
+        _fabDrag = true; _fabMoved = false;
+        const r = fab.getBoundingClientRect();
+        _fabOX = t.clientX - r.left; _fabOY = t.clientY - r.top;
+        _fabX = t.clientX; _fabY = t.clientY;
+    }, { passive: true });
+    pdoc.addEventListener('touchmove', e => {
+        if (!_fabDrag || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        if (!_fabMoved && Math.abs(t.clientX - _fabX) + Math.abs(t.clientY - _fabY) < 6) return;
+        if (!_fabMoved) { _fabMoved = true; fabShimOn(); }
+        fab.classList.add('dragging');
+        fab.style.left = (t.clientX - _fabOX) + 'px';
+        fab.style.top = (t.clientY - _fabOY) + 'px';
+        fab.style.right = 'auto'; fab.style.bottom = 'auto';
+        _fabX = t.clientX; _fabY = t.clientY;
+        e.preventDefault();
+    }, { passive: false });
+    pdoc.addEventListener('touchend', fabDragEnd);
+    pdoc.addEventListener('touchcancel', fabDragEnd);
     fab.addEventListener('click', () => {
         if (Date.now() - _fabMovedAt < 400) return; // 拖动结束不触发开关
         toggleMap();
@@ -809,17 +912,64 @@ pdoc.addEventListener('keydown',e=>{ if(e.key==='Escape'){closeDlg();} });
         if (_winArmed && _winMoving) _winMovedAt = Date.now();
         _winArmed = false; _winMoving = false;
     });
-
-    // 触摸拖拽
-    stageWrap.addEventListener('touchstart', e => {
-        if (e.touches.length === 1) { const t = e.touches[0]; startDrag(t.clientX, t.clientY); }
+    // 顶栏触摸拖动（平板等触屏大屏设备）：手机端 (≤786px) 窗口为全屏锁定，跳过拖动只保留按钮点击
+    topbar.addEventListener('touchstart', e => {
+        if (pdoc.documentElement.clientWidth <= 786) return;
+        if (e.touches.length !== 1) return;
+        if (e.target.closest('#isx-closebtn, #isx-backBtn, button, select, input')) return;
+        const t = e.touches[0];
+        _winArmed = true; _winMoving = false;
+        _wmx = t.clientX; _wmy = t.clientY;
     }, { passive: true });
     pdoc.addEventListener('touchmove', e => {
+        if (!_winArmed || e.touches.length !== 1) return;
+        const t = e.touches[0];
+        const dx = t.clientX - _wmx, dy = t.clientY - _wmy;
+        if (!_winMoving) {
+            if (Math.abs(dx) + Math.abs(dy) < 6) return;
+            _winMoving = true;
+            const r0 = ov.getBoundingClientRect();
+            ov.style.left = r0.left + 'px';
+            ov.style.top = r0.top + 'px';
+            ov.style.transform = 'none';
+            ov.classList.add('dragging');
+        }
+        const r = ov.getBoundingClientRect();
+        const vw = pdoc.documentElement.clientWidth, vh = pdoc.documentElement.clientHeight;
+        const nx = Math.min(vw - 180, Math.max(180 - r.width, r.left + dx));
+        const ny = Math.min(vh - 50, Math.max(0, r.top + dy));
+        ov.style.left = nx + 'px';
+        ov.style.top = ny + 'px';
+        _wmx = t.clientX; _wmy = t.clientY;
+        e.preventDefault();
+    }, { passive: false });
+    pdoc.addEventListener('touchend', () => {
+        if (_winArmed && _winMoving) _winMovedAt = Date.now();
+        _winArmed = false; _winMoving = false;
+    });
+
+    // 触摸手势：单指平移 + 双指捏合缩放（tap 不阻止合成 click，据点/区域仍可点）
+    let _pinchD = 0, _pinchZ = 1;
+    stageWrap.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) { const t = e.touches[0]; startDrag(t.clientX, t.clientY); }
+        else if (e.touches.length === 2) {
+            _dragging = false;
+            _pinchD = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            _pinchZ = _z;
+        }
+    }, { passive: true });
+    pdoc.addEventListener('touchmove', e => {
+        if (e.touches.length === 2 && _pinchD > 0) {
+            const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            setZoom(_pinchZ * (d / _pinchD));
+            e.preventDefault();
+            return;
+        }
         if (!_dragging || e.touches.length !== 1) return;
         e.preventDefault();
         moveDrag(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: false });
-    pdoc.addEventListener('touchend', () => { _dragging = false; });
+    pdoc.addEventListener('touchend', () => { _dragging = false; _pinchD = 0; });
 
     // 滚轮缩放
     stageWrap.addEventListener('wheel', e => {
