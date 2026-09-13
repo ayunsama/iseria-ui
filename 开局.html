@@ -9842,16 +9842,18 @@ function applyUndyingPreset() {
 
         // 生成传奇装备（AI 根据角色性格/人设/属性/职业自动定制）
         // ===== 健壮 JSON 提取（AI 输出带围栏/尾随文字/描述含括号时仍正确解析） =====
-        function extractJsonArray(text) {
+        // expectArray=true 时不解包数组，并在 AI 返回 {"xx":[...]} 包裹对象时自动取出其中的数组
+        function extractJsonArray(text, expectArray) {
             var raw = String(text == null ? '' : text);
             raw = raw.replace(/<思维链>[\s\S]*?<\/思维链>/g, ' ');
             var cand = null;
             var fm = raw.match(/```json\s*([\s\S]*?)\s*```/i) || raw.match(/```\s*([\s\S]*?)\s*```/);
             if (fm) cand = fm[1];
             else cand = raw;
-            var start = cand.indexOf('[');
+            var start = expectArray ? cand.indexOf('[') : -1;
             var brace = cand.indexOf('{');
-            if (brace !== -1 && (start === -1 || brace < start)) start = brace;
+            if (start === -1 && brace !== -1) start = brace;
+            if (start === -1) start = brace;
             if (start !== -1) {
                 var opener = cand[start], closer = opener === '[' ? ']' : '}';
                 var depth = 0, end = -1;
@@ -9881,12 +9883,18 @@ function applyUndyingPreset() {
                 }
             }
             if (Array.isArray(out)) {
+                if (expectArray) return out;
                 var firstObj = null;
                 for (var k = 0; k < out.length; k++) {
                     if (out[k] && typeof out[k] === 'object' && !Array.isArray(out[k])) { firstObj = out[k]; break; }
                 }
                 out = firstObj !== null ? firstObj : (out.length ? out[0] : null);
-            }
+            } else if (expectArray && out && typeof out === 'object') {
+                // AI 返回 {"skills": [...]} 这类包裹对象时，取出第一个数组字段
+                for (var key in out) {
+                    if (Array.isArray(out[key]) && out[key].length) return out[key];
+                }
+                return null;
             return out;
         }
         window.extractJsonArray = extractJsonArray;
@@ -9978,7 +9986,7 @@ function applyUndyingPreset() {
                 } finally { window.__ISURIA_NON_RP__ = false; }
                 statusEl.innerHTML = '✅ AI响应完成，正在解析…';
 
-                var parsed = extractJsonArray(result);
+                var parsed = extractJsonArray(result, true);
                 if (!Array.isArray(parsed)) throw new Error('返回数据不是数组');
 
                 var items = parsed.filter(function(it) { return it.name && typeof it.name === 'string' && it.name.trim(); });
@@ -11755,7 +11763,7 @@ mvuData.stat_data = stat;
                 } finally { window.__ISURIA_NON_RP__ = false; }
                 statusEl.innerHTML = '✅ AI响应完成，正在解析…';
 
-                var parsed = extractJsonArray(result);
+                var parsed = extractJsonArray(result, true);
                 if (!Array.isArray(parsed)) throw new Error('返回数据不是数组');
 
                 var validSkills = [];
@@ -11968,7 +11976,7 @@ mvuData.stat_data = stat;
                 } finally { window.__ISURIA_NON_RP__ = false; }
                 statusEl.innerHTML = '✅ AI响应完成，正在解析…';
 
-                var parsed = extractJsonArray(result);
+                var parsed = extractJsonArray(result, true);
                 if (!Array.isArray(parsed)) throw new Error('返回数据不是数组');
                 var validSkills = [];
                 parsed.forEach(function (sk) {
