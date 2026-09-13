@@ -23,7 +23,9 @@
  *   window.__agentBridge.setEnabled(false)     暂停桥接（localStorage 持久化）
  */
 
-$(() => {
+$(async () => {
+  // Mvu 全局由酒馆助手延迟注入——不等待会在启动时 ReferenceError 中断整个回调
+  try { await waitGlobalInitialized('Mvu'); } catch (e) { console.warn('[Agent桥接] Mvu 等待失败:', e); }
   const SERVER = 'http://127.0.0.1:8777';
   const SCRIPT_ID = 'agent-bridge';
   const AUDIT_TIMEOUT_MS = 90000;   // 等待 Agent 回复的完整上限
