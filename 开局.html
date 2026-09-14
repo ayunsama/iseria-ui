@@ -1344,16 +1344,6 @@
                 <label class="jrpg-cc-label">身份背景</label>
                 <select class="jrpg-cc-select" id="cc-identity-preset">
                     <option value="" disabled selected>-- 翻阅命运之书 --</option>
-                    <optgroup label="◆ 当前开场白（随上方选择联动）">
-                      <option value="__OPENING_1__">📖 从零转生（开场白①）</option>
-                      <option value="__OPENING_2__">🏛️ 先民苏醒（开场白②）</option>
-                      <option value="__OPENING_3__">🌌 异世界穿越（开场白③）</option>
-                      <option value="__OPENING_4__">⚔️ 勇者命格·战场觉醒（开场白④）</option>
-                      <option value="__OPENING_5__">🚌 群穿·命运之轮（开场白⑤）</option>
-                      <option value="__OPENING_6__">🌟 世界眷顾之子（开场白⑥）</option>
-                      <option value="__OPENING_7__">🪽 翼民骑士（开场白⑦）</option>
-                      <option value="__OPENING_8__">✨ 新增开场白⑧</option>
-                    </optgroup>
                     <option value="保留前世记忆，在这个世界作为一个毫无防备的婴儿重新出生，一切从零开始。">👶 从零转生 — 重活一世的无知新生</option>
                     <option value="时钟塔激进派的叛逃研究员，因窃取禁忌研究资料而被执行部通缉。">🔬 时钟塔叛逃研究员 — 被追猎的知识窃贼</option>
                     <option value="阿尔比恩异端审判庭的头号猎物，被扣上莫须有的渎神罪名逃亡至今。">⛓️ 异端审判庭逃犯 — 圣光之下的猎物</option>
@@ -1423,6 +1413,11 @@
                         <option value="洞穴之母·格莉奇">洞穴之母·格莉奇 (地精·躲藏)</option>
                         <option value="暗月·诺克提亚">暗月·诺克提亚 (血族·黑夜)</option>
                         <option value="泡沫王·布鲁普">泡沫王·布鲁普 (鱼人·庇护)</option>
+                    <optgroup label="隐秘信仰（新神·秘奉）">
+                        <option value="奥术之环·薇丝珀拉" data-desc="魔法之理与求知之神（弱神）。时钟塔学者秘密供奉的年轻神明：神术以自身法环与MP为主引擎、神力仅作校准放大，威力随学识与魔力上限水涨船高。">奥术之环·薇丝珀拉 (魔法之理与求知·时钟塔秘奉)</option>
+                        <option value="齿轮先知·墨彻尔" data-desc="构装与被造物之魂之神（新生弱神）。机械教团百年秘祭凝聚：神术为造物启灵与机械祝福，对血肉之躯几乎无效。">齿轮先知·墨彻尔 (构装与造物之魂·机械教团)</option>
+                        <option value="无面之主·梅尔克修斯" data-desc="魔神·神界混沌本体（弱神巅峰·凝聚将破），魔潮即其呼吸。旧日终焉教团所奉：虚无与溶融。信仰此神意味着背离圣光、走向终焉。">无面之主·梅尔克修斯 (魔神·虚无与溶融·旧日终焉)</option>
+                    </optgroup>
                     <optgroup label="图腾诸神（兽人限定）">
                         <option value="巨狼灵·加尔姆" data-desc="库图拉长子，追踪、耐力与持久战之神。灰蓝色冷焰附着四肢与武器，伴随低沉狼嗥回音。">巨狼灵·加尔姆 (狼族·追踪与冷焰)</option>
                         <option value="铁角灵·巴尔古夫" data-desc="防御、坚守与复仇之神。黑铁色光芒从地面或武器渗出，无坚不摧的铁角。">铁角灵·巴尔古夫 (牛族·防御与坚守)</option>
@@ -1438,16 +1433,6 @@
                 <label class="jrpg-cc-label" style="margin-top:15px;">降临地点 <span style="font-weight:normal;color:#7f8c8d;">(世界区域)</span> <span id="loc-lock-badge" style="display:none;" class="jrpg-lock-badge">已锁定</span></label>
                 <select class="jrpg-cc-select" id="cc-location">
                     <option value="" disabled selected>-- 命运的投掷 --</option>
-                    <optgroup label="附属小世界（裂隙降临）">
-                        <option value="小世界·埃雷松">埃雷松 (骑士与余烬)</option>
-                        <option value="小世界·绿华之庭">绿华之庭 (巨树世界)</option>
-                        <option value="小世界·云中秘境">云中秘境 (浮空群岛)</option>
-                        <option value="小世界·霜穹">霜穹 (北境与霜龙)</option>
-                        <option value="小世界·凯坦">凯坦 (沙海与青铜王座)</option>
-                        <option value="小世界·烬渊">烬渊 (永夜与萤城)</option>
-                        <option value="小世界·鳞荒">鳞荒 (蛮荒与龙巢)</option>
-                        <option value="小世界·先民遗迹">先民遗迹 (沉默方舟)</option>
-                    </optgroup>
                     <optgroup label="奥尔德南帝国">
                         <option value="奥尔德南帝国·艾森格拉德">帝都·艾森格拉德 (中枢/铁冠宫)</option>
                         <option value="奥尔德南帝国·瓦尔海姆">瓦尔海姆 (魔导工业城)</option>
@@ -1563,7 +1548,17 @@
                         <option value="莫尔加纳·潮息带外缘前哨">莫尔加纳·潮息带外缘 (魔兽前哨/传送法阵终端)</option>
                     </optgroup>
                     <!-- 大炎龙朝地区（由DLC控制） -->
-                </select>
+                                    <optgroup label="附属小世界（裂隙降临）">
+                        <option value="小世界·埃雷松">埃雷松 (骑士与余烬)</option>
+                        <option value="小世界·绿华之庭">绿华之庭 (巨树世界)</option>
+                        <option value="小世界·云中秘境">云中秘境 (浮空群岛)</option>
+                        <option value="小世界·霜穹">霜穹 (北境与霜龙)</option>
+                        <option value="小世界·凯坦">凯坦 (沙海与青铜王座)</option>
+                        <option value="小世界·烬渊">烬渊 (永夜与萤城)</option>
+                        <option value="小世界·鳞荒">鳞荒 (蛮荒与龙巢)</option>
+                        <option value="小世界·先民遗迹">先民遗迹 (沉默方舟)</option>
+                    </optgroup>
+</select>
             </div>
 
             <!-- ====== 第2页：属性 ====== -->
@@ -4529,15 +4524,6 @@ function izSaveStartYear(v) {
 function izYearStr() { return '圣光历' + izStartYear() + '年'; }
 (function () { var sp = document.getElementById('iz-yr-longju'); if (sp) sp.textContent = izYearStr(); })();
 
-    // ---- 身份背景下拉联动：显示所选开场白小标题 ----
-    var opSel = document.getElementById('cc-identity-preset');
-    if (opSel) {
-        var opVal = '__OPENING_' + index + '__';
-        if (opSel.querySelector('option[value="' + opVal + '"]')) {
-            opSel.value = opVal;
-            opSel.classList.remove('jrpg-locked-select');
-        }
-    }
 function applyOpeningPreset(index) {
     // 清除所有按钮的active状态
     for (var i = 1; i <= 8; i++) {
