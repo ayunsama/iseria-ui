@@ -75,6 +75,9 @@
   background:radial-gradient(circle at 20% 10%, #efe4cb 0%, #e4d6b4 60%, #d8c79e 100%);
   overflow:hidden; user-select:none;
 }
+/* ★ 酒馆环境防御：box-sizing 被主题改回 content-box 时所有 padding 变额外宽度（玩家卡/内容整块撑出窗口），
+   必须 !important 锁定；min-width:0 防 flex 子项被内容撑宽 */
+#arx-overlay, #arx-overlay *{box-sizing:border-box !important; min-width:0; max-width:100%;}
 #arx-overlay.dragging{ transform:none; }
 #arx-overlay, #arx-overlay *{box-sizing:border-box;}
 #arx-overlay *{margin:0; padding:0;}
