@@ -238,6 +238,23 @@
   text-align:center !important; vertical-align:middle !important;
   padding:3px 12px !important; border-radius:10px !important;
 }
+/* ★ 推演块美化：数据卡行渲染为居中金框卡，文本居中 */
+.arx-co-b .arx-dcard{
+  margin:10px auto; padding:12px 18px; text-align:center; max-width:620px;
+  background:linear-gradient(165deg,rgba(42,32,22,.9),rgba(36,26,16,.9));
+  border:1.5px solid var(--arx-gold); border-radius:8px;
+  box-shadow:0 3px 12px rgba(0,0,0,.35), inset 0 0 24px rgba(184,137,42,.10);
+}
+.arx-co-b .arx-dcard-row{
+  display:block; font-size:12px; line-height:1.9; color:#e8d5a8;
+  letter-spacing:.5px; margin:2px 0; text-align:center;
+}
+.arx-co-b .arx-dcard-row:first-child{ color:#f0d48a; font-weight:700; letter-spacing:2px; border-bottom:1px dashed rgba(212,180,120,.3); padding-bottom:4px; margin-bottom:4px;}
+.arx-co-b .arx-dd-head{
+  text-align:center; color:#f0d48a; font-size:13.5px; letter-spacing:2px;
+  margin:12px auto 6px; padding-bottom:4px; border-bottom:1px solid rgba(212,180,120,.3); max-width:520px;
+}
+.arx-co-b .arx-dd-text{ text-align:center; font-size:12.5px; line-height:1.9; color:#e8d5a8; margin:4px auto; max-width:560px; }
 `;
 
     /* ================== 结构 ================== */
@@ -662,6 +679,11 @@
 敌方（蓝方）：${nameB}
 ${isMe ? '（我方玩家的行动同样由你推演，遵守其"战斗方式"倾向与技能配置；玩家构筑来自真实存档，但本场为模拟，放心全力推演。）' : ''}
 
+═══ 数据卡权威性（最高优先级之一）═══
+- 【选手数据】中已给出完整数据卡/角色卡战斗数据的选手：**逐字照搬其全部数值（HP/防御/属性/攻击骰/能力/机制/奥义/权能），禁止任何修改、重算、"平衡性调整"或重新生成**——推演只能使用卡面明示的数值。
+- 仅对完全没有任何数据卡的选手（如仅有描述文字的魔兽），按其描述与等阶现场生成数据卡，并在 <构筑推演> 中写明每项推导理由。
+- 世界书条目原文若含 EJS 模板（<% %>），变量定义就在原文内：按"壮年基准期"的完整战斗数据解读，不要把模板语法当内容。
+
 ═══ 选手数据 ═══
 ${cardsA.join('\n\n')}
 
@@ -808,6 +830,40 @@ ${cardsB.join('\n\n')}
         return `<span class="arx-row${cls}">${esc(line.trim())}</span>`;
     }
 
+    /** 推演块美化：数据卡行（[名称|…][HP|…] 等）拆成居中金框卡，其余文本居中段落 */
+    function renderDeductionBody(text) {
+        const CARD_KEY = /^(名称|种类|种族|等阶|等级|HP|SP|MP|防御值|移动速度|先攻修正|属性|攻击|能力|机制|奥义|权能|弱点|抗性|免疫|战利品|经验值|外貌|状态|装备|随身物品|加护|职业)\s*[|：:]/;
+        const lines = String(text ?? '').split('\n');
+        const out = [];
+        let inCard = false;
+        const closeCard = () => { if (inCard) { out.push('</div>'); inCard = false; } };
+        for (const raw of lines) {
+            const line = raw.trim();
+            if (!line) continue;
+            // 该行是否为数据卡行（一行一条 [键|值]，或一行多条 [..][..] 连写）
+            const isCardLine = CARD_KEY.test(line) || (/^\[[^\]]+\|/.test(line) && (line.match(/\[[^\]]+\|/g) || []).length >= 1);
+            if (isCardLine) {
+                if (!inCard) { out.push('<div class="arx-dcard">'); inCard = true; }
+                // 一行可能连写多条 [..|..]，逐条拆出
+                const parts = line.match(/\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]/g) || [line];
+                for (const p of parts) {
+                    const t = p.trim();
+                    if (t) out.push(`<div class="arx-dcard-row">${esc(t)}</div>`);
+                }
+                continue;
+            }
+            closeCard();
+            // 小节标题行（【..】/一、二、等）加亮
+            if (/^【.+】$/.test(line) || /^[一二三四五六七八九十]、/.test(line)) {
+                out.push(`<div class="arx-dd-head">${esc(line)}</div>`);
+                continue;
+            }
+            out.push(`<div class="arx-dd-text">${esc(line)}</div>`);
+        }
+        closeCard();
+        return out.join('');
+    }
+
     function renderReportBody(report) {
         const lines = report.split('\n');
         const out = [];
@@ -834,7 +890,7 @@ ${cardsB.join('\n\n')}
             co.innerHTML = `<div class="arx-co-h"><span class="arx-arrow">▼</span> ${esc(b.title)}</div><div class="arx-co-b"></div>`;
             const body = co.querySelector('.arx-co-b');
             if (b.raw != null) { body.id = 'arx-report'; body.innerHTML = renderReportBody(b.raw); }
-            else body.textContent = b.body || '';
+            else body.innerHTML = renderDeductionBody(b.body || '');
             co.querySelector('.arx-co-h').addEventListener('click', () => co.classList.toggle('open'));
             box.appendChild(co);
         }
