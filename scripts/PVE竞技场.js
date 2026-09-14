@@ -221,6 +221,23 @@
   #arx-report .arx-row{ font-size:10px; }
   .arx-co-b{ max-height:240px; font-size:11.5px; }
 }
+/* ★ 玩家卡徽章规格对齐候补胶囊（用户参考标准：文字水平垂直居中且不超出胶囊）：
+   全部 !important——酒馆主题样式会压制普通声明（inline 元素垂直 padding 不占行框=文字贴边根因） */
+#arx-overlay .arx-me-rank{
+  display:inline-block !important; white-space:nowrap !important; line-height:1.5 !important;
+  text-align:center !important; vertical-align:middle !important;
+  padding:4px 16px !important; border-radius:10px !important;
+}
+#arx-overlay .arx-me-stats span{
+  display:inline-block !important; white-space:nowrap !important; line-height:1.5 !important;
+  text-align:center !important; vertical-align:middle !important;
+  padding:3px 11px !important; border-radius:10px !important;
+}
+#arx-overlay .arx-tag{
+  display:inline-block !important; white-space:nowrap !important; line-height:1.5 !important;
+  text-align:center !important; vertical-align:middle !important;
+  padding:3px 12px !important; border-radius:10px !important;
+}
 `;
 
     /* ================== 结构 ================== */
