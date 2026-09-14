@@ -1154,6 +1154,23 @@
       display: none;
       }
   </style>
+
+<style id="iz-ui-polish">
+/* 自创职业/变体技能树/传奇装备等虚线框 → 羊皮纸描金质感 */
+div[style*="dashed"] {
+  background: linear-gradient(180deg, rgba(247,239,221,.55), rgba(236,223,194,.35)) !important;
+  border-color: #a68c5d !important;
+  border-radius: 6px !important;
+  box-shadow: inset 0 0 20px rgba(139,107,74,.08), 0 1px 3px rgba(62,44,26,.15) !important;
+}
+div[style*="dashed"] > div:first-child { color: #6b2e2e !important; letter-spacing: 1px; }
+/* 装备页签按钮 → 羊皮纸小牌 */
+[id^="eq-tab-"] { border-radius: 4px !important; border: 1px solid #b5a988 !important;
+  background: rgba(247,239,221,.7) !important; color: #5d4322 !important; transition: all .15s; }
+[id^="eq-tab-"]:hover { border-color: #8b6b4a !important; box-shadow: 0 1px 4px rgba(139,107,74,.3); }
+/* 职业chips → 羊皮纸印章式 */
+[id^="eq-job-"], .jrpg-eq-chip { border-radius: 50%/38% !important; }
+</style>
 </head>
 <body>
 
@@ -1199,16 +1216,21 @@
 
             <!-- ====== 第1页：起源 ====== -->
             <div id="content1" class="jrpg-tab-panel">
+                <!-- ===== 纪元设定（开局年份·独立区块）===== -->
+                <div class="jrpg-opening-presets" style="margin-bottom:10px;">
+                    <div class="jrpg-opening-title">🕰️ 纪元设定 · 降临之时</div>
+                    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin:8px 0 4px;font-size:13px;color:#6b5433;">
+                        <span>开局年份：</span>
+                        <input type="number" id="iz-start-year" min="1400" max="1497" step="1" value="1497"
+                               style="width:100px;padding:4px 8px;border:1px solid #8b6b4a;border-radius:6px;background:#fdf6e3;color:#3a2c15;font-weight:bold;font-size:14px;"
+                               onchange="izSaveStartYear(this.value)">
+                        <span style="opacity:.85;">年（1400–1497；越早魔王降临越远，默认1497）</span>
+                    </div>
+                    <div style="text-align:center;font-size:11px;color:#8a7b5c;">年份决定世界所处时代：纪元触发器将按此年份呈现对应的大事件与在世人物</div>
+                </div>
                 <!-- ===== 开场白预设按钮区 ===== -->
                 <div class="jrpg-opening-presets">
                     <div class="jrpg-opening-title">📖 选择开场白 · 命运的起点</div>
-                    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0 10px;font-size:12px;color:#6b5433;">
-                        <span>🕰️ 开局年份：</span>
-                        <input type="number" id="iz-start-year" min="1400" max="1497" step="1" value="1497"
-                               style="width:90px;padding:3px 6px;border:1px solid #8b6b4a;border-radius:6px;background:#fdf6e3;color:#3a2c15;font-weight:bold;"
-                               onchange="izSaveStartYear(this.value)">
-                        <span style="opacity:.8;">年（越早魔王降临越远，默认1497）</span>
-                    </div>
                     <div class="jrpg-opening-grid">
                         <button class="jrpg-opening-btn" onclick="applyOpeningPreset(1)" id="open-btn-1">
                             <span class="open-icon">👶</span>
@@ -1713,9 +1735,9 @@
                     </optgroup>
                     <optgroup label="乌尔坎特有 (蛮荒与野性)">
                         <option value="祭司" data-hp="8" data-sp="0" data-mp="wis" data-req-wis="14" data-req-con="13">祭司 (蛮荒神术 / 仪式降力) [需感知14 体质13]</option>
-                        <option value="战士(乌尔坎)" data-hp="10" data-sp="3" data-mp="0" data-req-str="13">战士[乌尔坎] (丛林战 / 投掷精通) [需力量13]</option>
-                        <option value="狂战士(乌尔坎)" data-hp="12" data-sp="3" data-mp="0" data-req-str="15">狂战士[乌尔坎] (血祭图腾 / 原始死斗) [需力量15]</option>
-                        <option value="猎手(乌尔坎)" data-hp="8" data-sp="4" data-mp="0" data-req-dex="13">猎手[乌尔坎] (毒箭陷阱 / 巨蜥协同) [需敏捷13]</option>
+                        <option value="战团武士" data-hp="10" data-sp="3" data-mp="0" data-req-str="13">战团武士 (丛林战 / 投掷精通) [需力量13]</option>
+                        <option value="狂战团武士" data-hp="12" data-sp="3" data-mp="0" data-req-str="15">狂战团武士 (血祭图腾 / 原始死斗) [需力量15]</option>
+                        <option value="荒径猎手" data-hp="8" data-sp="4" data-mp="0" data-req-dex="13">荒径猎手 (毒箭陷阱 / 巨蜥协同) [需敏捷13]</option>
                     </optgroup>
                     <!-- 大炎龙朝职业（由DLC控制） -->
                 </select>
@@ -1731,7 +1753,7 @@
                             <option value="魔剑士" data-req-str="13" data-req-dex="13" data-req-int="13">魔剑士 [需力量或敏捷13 智力13]</option><option value="药剂师">药剂师</option><option value="魔导技师" data-req-int="13">魔导技师 [需智力13]</option>
                             <option value="德鲁伊" data-req-int="13" data-req-wis="12">德鲁伊 [需智力13 感知12 · 精灵专属]</option>
                             <option value="精灵术士" data-req-int="13" data-req-cha="13">精灵术士 [需智力13 魅力13 · 精灵专属]</option><option value="魔兽使" data-req-wis="13" data-req-cha="12">魔兽使 [需感知13 魅力12]</option>
-                            <option value="祭司" data-req-wis="14" data-req-con="13">祭司[乌尔坎] [需感知14 体质13]</option><option value="战士(乌尔坎)" data-req-str="13">战士[乌尔坎] [需力量13]</option><option value="狂战士(乌尔坎)" data-req-str="15">狂战士[乌尔坎] [需力量15]</option><option value="猎手(乌尔坎)" data-req-dex="13">猎手[乌尔坎] [需敏捷13]</option>
+                            <option value="祭司" data-req-wis="14" data-req-con="13">荒灵祭司 [需感知14 体质13]</option><option value="战团武士" data-req-str="13">战团武士 [需力量13]</option><option value="狂战团武士" data-req-str="15">狂战团武士 [需力量15]</option><option value="荒径猎手" data-req-dex="13">荒径猎手 [需敏捷13]</option>
                             <option value="魔王" class="apocalypse-class" style="display:none;">魔王</option>
                             <option value="不死人" class="apocalypse-class" style="display:none;">不死人</option>
                             <!-- 大炎职业兼职选项动态添加 -->
@@ -1747,7 +1769,7 @@
                             <option value="魔剑士" data-req-str="13" data-req-dex="13" data-req-int="13">魔剑士 [需力量或敏捷13 智力13]</option><option value="药剂师">药剂师</option><option value="魔导技师" data-req-int="13">魔导技师 [需智力13]</option>
                             <option value="德鲁伊" data-req-int="13" data-req-wis="12">德鲁伊 [需智力13 感知12 · 精灵专属]</option>
                             <option value="精灵术士" data-req-int="13" data-req-cha="13">精灵术士 [需智力13 魅力13 · 精灵专属]</option><option value="魔兽使" data-req-wis="13" data-req-cha="12">魔兽使 [需感知13 魅力12]</option>
-                            <option value="祭司" data-req-wis="14" data-req-con="13">祭司[乌尔坎] [需感知14 体质13]</option><option value="战士(乌尔坎)" data-req-str="13">战士[乌尔坎] [需力量13]</option><option value="狂战士(乌尔坎)" data-req-str="15">狂战士[乌尔坎] [需力量15]</option><option value="猎手(乌尔坎)" data-req-dex="13">猎手[乌尔坎] [需敏捷13]</option>
+                            <option value="祭司" data-req-wis="14" data-req-con="13">荒灵祭司 [需感知14 体质13]</option><option value="战团武士" data-req-str="13">战团武士 [需力量13]</option><option value="狂战团武士" data-req-str="15">狂战团武士 [需力量15]</option><option value="荒径猎手" data-req-dex="13">荒径猎手 [需敏捷13]</option>
                             <option value="魔王" class="apocalypse-class" style="display:none;">魔王</option>
                             <option value="不死人" class="apocalypse-class" style="display:none;">不死人</option>
                         </select>
@@ -6525,7 +6547,7 @@ function applyUndyingPreset() {
                     d: "MP15|完全进入出神状态，施法瞬发且无视抗性" }, { lvl: 7, n: "原始灾变", c: 4,
                     d: "MP12|引发局部地形毁灭性重塑" }
             ],
-            "战士(乌尔坎)": [
+            "战团武士": [
                 { lvl: 1, n: "丛林猎王", c: 1, d: "[被动] 处于密林/沼泽/泥泞环境中时，无视地形减速，且近战攻击检定+1" },
                 { lvl: 1, n: "投掷异禀", c: 1, d: "[被动] 使用标枪/战斧等投掷武器时，有效射程提升50%，伤害判定+2" },
                 { lvl: 1, n: "骨甲磨合", c: 1, d: "[被动] 穿戴骨甲/藤甲/兽皮等天然非金属防具时，将敏捷修正的额外一半（向下取整）也计入防御值" },
@@ -6548,7 +6570,7 @@ function applyUndyingPreset() {
                 { lvl: 17, n: "沉星陨掷", c: 9, d: "SP15 | 1次/日。赌上手臂脱臼的极限蓄力投掷：R100尺直线音爆贯穿。对路径上所有存在构体造成 6d10+力量修正×3 的巨额工程贯穿破坏。非史诗级低劣装甲将被此击直接粉碎，且敏捷极高的目标仅能豁免一半伤害" },
                 { lvl: 19, n: "古陆震龙", c: 10, d: "SP20 | 1次/日，进入长达1分钟的图腾物理极意状态：只要双脚站在泥土/岩石大地上，力量检定必定按最大值结算。每次命中必然对目标附带『击退』与『装甲开裂』效果。此状态结束后，当前HP直接减半，双手陷入短暂停摆的肌肉痉挛" }
             ],
-            "狂战士(乌尔坎)": [
+            "狂战团武士": [
                 { lvl: 1, n: "血脉狂暴", c: 1, d: "SP4 [附赠] 力量+2防-2，攻击附带1d4流血伤" },
                 { lvl: 1, n: "痛觉迟钝", c: 1, d: "[被动] 狂暴中承受伤害减去体质修正" },
                 { lvl: 1, n: "野兽威压", c: 1, d: "[被动] 魅力威吓检定优势" },
@@ -6571,7 +6593,7 @@ function applyUndyingPreset() {
                 { lvl: 17, n: "祖兽降临", c: 9, d: "SP15 | 1次/日，体型膨胀为大型，力量上限突破至30，每次攻击附带2d10原始狂乱伤害，持续1分钟" },
                 { lvl: 19, n: "乌尔坎之怒", c: 10, d: "[被动] HP越低伤害越高（每损失10%最大HP，所有伤害骰+1），且免疫即死效果" }
             ],
-            "猎手(乌尔坎)": [{ lvl: 1, n: "毒素提炼", c: 1, d: "可从丛林动植物中提取麻痹/剧毒" }, { lvl: 1, n: "吹箭精通",
+            "荒径猎手": [{ lvl: 1, n: "毒素提炼", c: 1, d: "可从丛林动植物中提取麻痹/剧毒" }, { lvl: 1, n: "吹箭精通",
                     c: 1, d: "吹箭攻击+1，无视轻甲" }, { lvl: 1, n: "泥沼伪装", c: 1, d: "泥泞环境中潜行检定绝对优势" },
                 { lvl: 1, n: "巨蜥伙伴", c: 1, d: "获得一只乌尔坎本土巨蜥战宠" }, { lvl: 3, n: "致命陷坑", c: 2,
                     d: "SP2|布置带毒刺的地洞陷阱" }, { lvl: 3, n: "协同狩猎", c: 2, d: "攻击被巨蜥咬住的目标时伤害+1d6" },
@@ -6877,9 +6899,9 @@ function applyUndyingPreset() {
             '神官':       { key: ['感知'], req: { '感知': 14 }, logic: 'and', extra: '选定一位神明信仰' },
             '圣殿骑士':   { key: ['力量', '感知'], req: { '力量': 14, '感知': 13 }, logic: 'and', extra: '信仰圣光神' },
             '魔剑士':     { key: ['力量', '敏捷', '智力'], req: { '力量': 13, '敏捷': 13, '智力': 13 }, logic: 'or_first', extra: '掌握术式语言' },
-            '战士[乌尔坎]': { key: ['力量'], req: { '力量': 13 }, logic: 'and' },
-            '狂战士[乌尔坎]': { key: [], req: {}, logic: 'and' },
-            '猎手[乌尔坎]': { key: ['敏捷', '感知'], req: { '敏捷': 14, '感知': 13 }, logic: 'and' },
+            '战团武士': { key: ['力量'], req: { '力量': 13 }, logic: 'and' },
+            '狂战团武士': { key: [], req: {}, logic: 'and' },
+            '荒径猎手': { key: ['敏捷', '感知'], req: { '敏捷': 14, '感知': 13 }, logic: 'and' },
             '祭司':       { key: ['感知', '体质'], req: { '感知': 14, '体质': 13 }, logic: 'and', extra: '必须接触过乌尔坎环境魔力' },
             '炎术士':     { key: ['智力', '体质'], req: { '智力': 14, '体质': 12 }, logic: 'and', extra: '龙血品级五品以上' },
             '炎祖祭司':   { key: ['感知', '魅力'], req: { '感知': 14, '魅力': 12 }, logic: 'and', extra: '龙血品级四品以上' },
@@ -7206,9 +7228,9 @@ function applyUndyingPreset() {
         var 职业每级成长 = {
             '战士': { HP: 'd10', SP: 'd6', sp: 4 }, '骑士': { HP: 'd10', SP: 'd6', sp: 3 },
             '猎人': { HP: 'd8', SP: 'd4', sp: 4 }, '斥候': { HP: 'd8', SP: 'd4', sp: 5 },
-            '狂战士': { HP: 'd12', SP: 'd8', sp: 3 }, '战士[乌尔坎]': { HP: 'd10', SP: 'd8', sp: 3 },
-            '猎手': { HP: 'd8', SP: 'd4', sp: 4 }, '猎手[乌尔坎]': { HP: 'd8', SP: 'd4', sp: 4 },
-            '狂战士[乌尔坎]': { HP: 'd12', SP: 'd10', sp: 3 }, '元素法师': { HP: 'd6', MP: 'd6', sp: 5 },
+            '狂战士': { HP: 'd12', SP: 'd8', sp: 3 }, '战团武士': { HP: 'd10', SP: 'd8', sp: 3 },
+            '猎手': { HP: 'd8', SP: 'd4', sp: 4 }, '荒径猎手': { HP: 'd8', SP: 'd4', sp: 4 },
+            '狂战团武士': { HP: 'd12', SP: 'd10', sp: 3 }, '元素法师': { HP: 'd6', MP: 'd6', sp: 5 },
             '符文师': { HP: 'd6', MP: 'd6', sp: 5 }, '塑能师': { HP: 'd6', MP: 'd8', sp: 5 },
             '死灵法师': { HP: 'd6', MP: 'd6', sp: 4 }, '召唤师': { HP: 'd6', MP: 'd6', sp: 5 },
             '魔导技师': { HP: 'd6', MP: 'd6', sp: 5 }, '德鲁伊': { HP: 'd8', MP: 'd6', sp: 3 },
@@ -8340,6 +8362,32 @@ function applyUndyingPreset() {
                   stats:{攻击力:'2d6+1',攻击类型:'挥砍',材质:'黑铁',主属性:'力量'},
                   affixes:{词条效果:{沉重:'攻击检定-1但伤害+2'},特殊机制:{余烬:'篝火旁恢复时此剑获得临时+1附魔,持续至下次长休'}}, desc:'通体漆黑的沉重铁剑，专为不死人铸造' },
                 // -- 远程系 --
+                // -- 魔兽使专属 --
+                { id:'bt_w1', name:'驭兽鞭', cost:2, tier:1, group:'hybrid', lvl:1, job:'魔兽使',
+                  cat:'武器', rank:'精良', sub:'软鞭', slot:'单手',
+                  stats:{攻击力:'1d6+1',攻击类型:'挥砍',材质:'兽筋皮革',主属性:'敏捷'},
+                  affixes:{词条效果:{兽威:'攻击野兽类目标时伤害+1d4'},特殊机制:{御兽指挥:'鞭击可代替口头下令指挥契约兽'}}, desc:'兽筋编织的驭兽长鞭，野兽闻之驯服' },
+                { id:'bt_w2', name:'兽骨猎刀', cost:3, tier:2, group:'hybrid', lvl:5, job:'魔兽使',
+                  cat:'武器', rank:'稀有', sub:'短刀', slot:'单手',
+                  stats:{攻击力:'1d8+2',攻击类型:'穿刺',材质:'魔兽骨',主属性:'敏捷'},
+                  affixes:{词条效果:{猎者:'对受伤目标伤害+1d6'},特殊机制:{血引:'击杀魔兽后下次驯养检定优势'}}, desc:'以魔兽腿骨磨制的猎刀，刀身泛血纹' },
+                { id:'bt_a1', name:'驯兽皮甲', cost:3, tier:1, group:'hybrid', lvl:1, job:'魔兽使',
+                  cat:'防具', rank:'精良', sub:'轻甲', slot:'身体',
+                  stats:{防御值:'+3',材质:'多层兽皮',重量:'轻'},
+                  affixes:{词条效果:{兽息伪装:'野外被魔兽主动攻击概率大减'},特殊机制:{韧皮:'受魔兽撕咬类攻击伤害-2'}}, desc:'缝入魔兽腺体气息的皮甲，野兽视你为同类' },
+                { id:'bt_a2', name:'百兽战衣', cost:6, tier:2, group:'hybrid', lvl:9, job:'魔兽使',
+                  cat:'防具', rank:'稀有', sub:'轻甲', slot:'身体',
+                  stats:{防御值:'+5',材质:'魔兽革拼接',重量:'轻'},
+                  affixes:{词条效果:{威压兽群:'等阶不高于自身的野兽畏惧不敢近身'},特殊机制:{共鸣:'契约兽在10尺内时你防御再+1'}}, desc:'七种魔兽皮革拼接的战衣，御兽者的威仪' },
+                { id:'bt_ac1', name:'古兽语哨', cost:2, tier:1, group:'hybrid', lvl:1, job:'魔兽使',
+                  cat:'饰品', rank:'精良', sub:'饰品', slot:'颈部',
+                  stats:{效果:'驯养/指挥契约兽检定+2'},
+                  affixes:{词条效果:{远哨:'哨音可传达一里外的契约兽'},特殊机制:{古语:'哨音中混有失传的兽语元音'}}, desc:'出土于先民遗迹的骨哨，音调令野兽安静' },
+                { id:'bt_c1', name:'驯兽鲜饵', cost:1, tier:1, group:'hybrid', lvl:1, job:'魔兽使',
+                  cat:'消耗品', rank:'普通', sub:'消耗', slot:'消耗',
+                  stats:{效果:'驯养检定+3（单次）'},
+                  affixes:{特殊机制:{美味:'使用后该魔兽一小时内温顺听从'}}, desc:'掺入秘制草药的肉饵，魔兽的最爱' },
+
                 { id:'w11', name:'短弓', cost:1, tier:1, group:'ranged', lvl:1,
                   cat:'武器', rank:'普通', sub:'短弓', slot:'双手',
                   stats:{攻击力:'1d6',攻击类型:'穿刺',射程:'60/120尺',材质:'木',主属性:'敏捷'},
@@ -10227,10 +10275,10 @@ function applyUndyingPreset() {
         // ===== 获取职业所属分组 =====
         function getClassGroup(jobName) {
             if (!jobName || jobName === '无职业' || jobName === '魔王') return 'universal';
-            var meleeJobs  = ['战士','骑士','狂战士','圣殿骑士','魔剑士','战士(乌尔坎)','狂战士(乌尔坎)','炎脉武士','铁冠卫','不死人','连撞卫士','绒毛骑士'];
-            var rangedJobs = ['猎人','斥候','猎手(乌尔坎)','寻草射手'];
+            var meleeJobs  = ['战士','骑士','狂战士','圣殿骑士','魔剑士','战团武士','血祭狂战士','狂战团武士','炎脉武士','铁冠卫','不死人','连撞卫士','绒毛骑士'];
+            var rangedJobs = ['猎人','斥候','荒径猎手','寻草射手'];
             var magicJobs  = ['元素法师','符文师','塑能师','死灵法师','召唤师','圣光法师','魔导技师','炎术士','邪术师','精灵术士'];
-            var divineJobs = ['神官','祭司','炎祖祭司','咩语神官'];
+            var divineJobs = ['神官','祭司','荒灵祭司','炎祖祭司','咩语神官'];
             var hybridJobs = ['药剂师','德鲁伊','魔兽使'];
             if (meleeJobs.indexOf(jobName) !== -1) return 'melee';
             if (rangedJobs.indexOf(jobName) !== -1) return 'ranged';
@@ -13268,5 +13316,33 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
             initDynamicKeywordDisabledEntries();
         })();
     </script>
+
+<style id="iz-quest-fold-css">
+.jrpg-quest-card .quest-title { cursor: pointer; }
+.jrpg-quest-card .quest-title:hover { filter: brightness(1.05); }
+.jrpg-quest-card.collapsed .quest-meta,
+.jrpg-quest-card.collapsed .quest-desc,
+.jrpg-quest-card.collapsed .quest-reward,
+.jrpg-quest-card.collapsed .quest-progress { display: none; }
+.jrpg-quest-card .quest-title::after { content: '▾ 收起'; font-size: 10px; color: #8a7b5c; font-weight: normal; margin-left: 6px; }
+.jrpg-quest-card.collapsed .quest-title::after { content: '▸ 展开'; color: #b08d3f; }
+</style>
+<script>
+(function(){
+  if (window.__izQuestFold) return; window.__izQuestFold = true;
+  function init() {
+    document.querySelectorAll('.jrpg-quest-card').forEach(function(card) {
+      if (card.__izFoldInit) return; card.__izFoldInit = true;
+      var isCurrent = card.innerHTML.indexOf('>当前<') !== -1 || card.innerHTML.indexOf('> 当前 <') !== -1;
+      if (!isCurrent) card.classList.add('collapsed');
+      var title = card.querySelector('.quest-title');
+      if (title) title.addEventListener('click', function() { card.classList.toggle('collapsed'); });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+  setInterval(function(){ try { init(); } catch(e){} }, 2500);
+})();
+</script>
 </body>
 </html>

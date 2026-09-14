@@ -125,9 +125,9 @@
   const 职业每级成长 = {
     '战士': { HP: 'd10', SP: 'd6', sp: 4 }, '骑士': { HP: 'd10', SP: 'd6', sp: 3 },
     '猎人': { HP: 'd8', SP: 'd4', sp: 4 }, '斥候': { HP: 'd8', SP: 'd4', sp: 5 },
-    '狂战士': { HP: 'd12', SP: 'd8', sp: 3 }, '战士[乌尔坎]': { HP: 'd10', SP: 'd8', sp: 3 },
-    '猎手': { HP: 'd8', SP: 'd4', sp: 4 }, '猎手[乌尔坎]': { HP: 'd8', SP: 'd4', sp: 4 },
-    '狂战士[乌尔坎]': { HP: 'd12', SP: 'd10', sp: 3 }, '元素法师': { HP: 'd6', MP: 'd6', sp: 5 },
+    '狂战士': { HP: 'd12', SP: 'd8', sp: 3 }, '战团武士': { HP: 'd10', SP: 'd8', sp: 3 },
+    '猎手': { HP: 'd8', SP: 'd4', sp: 4 }, '荒径猎手': { HP: 'd8', SP: 'd4', sp: 4 },
+    '狂战团武士': { HP: 'd12', SP: 'd10', sp: 3 }, '元素法师': { HP: 'd6', MP: 'd6', sp: 5 },
     '符文师': { HP: 'd6', MP: 'd6', sp: 5 }, '塑能师': { HP: 'd6', MP: 'd8', sp: 5 },
     '死灵法师': { HP: 'd6', MP: 'd6', sp: 4 }, '召唤师': { HP: 'd6', MP: 'd6', sp: 5 },
     '魔导技师': { HP: 'd6', MP: 'd6', sp: 5 }, '德鲁伊': { HP: 'd8', MP: 'd6', sp: 3 },
@@ -242,7 +242,7 @@
     if (parts.length >= 2 && families.indexOf(parts[0].trim()) !== -1) return parts[0].trim();
     return s;
   }
-  // ---- 成长表查表：兼容全角/半角/方括号变体（如 首页写入「战士(乌尔坎)」vs 表键「战士[乌尔坎]」） ----
+  // ---- 成长表查表：兼容全角/半角/方括号变体（如 首页写入「战团武士」vs 表键「战团武士」） ----
   function lookupJobGrowth(jobName) {
     const base = normalizeJobName(jobName);
     let g = 职业每级成长[base];
