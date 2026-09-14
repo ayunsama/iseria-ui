@@ -1228,6 +1228,11 @@ div[style*="dashed"] > div:first-child { color: #6b2e2e !important; letter-spaci
                     </div>
                     <div style="text-align:center;font-size:11px;color:#8a7b5c;">年份决定世界所处时代：纪元触发器将按此年份呈现对应的大事件与在世人物</div>
                 </div>
+                <!-- ===== 时局梗概（随开局年份联动）===== -->
+                <div class="jrpg-opening-presets" style="margin-bottom:10px;">
+                    <div class="jrpg-opening-title">📜 时局梗概 · 即将发生的历史</div>
+                    <div id="iz-era-brief" style="padding:6px 14px 10px;font-size:12.5px;color:#4a3623;line-height:1.9;"></div>
+                </div>
                 <!-- ===== 开场白预设按钮区 ===== -->
                 <div class="jrpg-opening-presets">
                     <div class="jrpg-opening-title">📖 选择开场白 · 命运的起点</div>
@@ -4527,6 +4532,41 @@ function applyDemonPreset() {
 // ============================================================
 //  开场白预设按钮切换
 // ============================================================
+
+// ── 时局梗概（随开局年份联动）──
+var IZ_ERA_BRIEF = [
+  { from: 1400, to: 1419, txt: '世纪之交：帝国魔导工厂带沿西境河谷铺开，魔力工程走向流水线；阿尔比恩与教廷靠土地与什一税维系旧秩序，大陆处于脆弱的和平。' },
+  { from: 1420, to: 1439, txt: '考古热：帝国边境先民遗迹接连出土，时钟塔组建官方考古队，莫尔加纳边缘立起首座常驻观测哨；废墟拾荒者行会兴起。1429年，港湾镇皮匠家降生赫克托·巴尔德。' },
+  { from: 1440, to: 1459, txt: '铁血宰相时代：维克托组阁摄政，帝国税册与工厂法全面改写；阿尔比恩老王在位，爱德华由老塞顿开蒙；公会黄金年代。此间降生：马可·奥里安尼、亚瑟·格洛斯特、盲眼艾德。' },
+  { from: 1460, to: 1469, txt: '新王与法案：1461年爱德华加冕，改革随即被大贵族与教廷压制；帝国《平权法案》引发全面反弹。此间降生：亨利（1462）、卡帕比尔德（1462）、理查德（1465）、伊丽莎白（1468）。' },
+  { from: 1470, to: 1479, txt: '旧支柱倾颓：1470年庇护十二世禅让隐修；1474年公会总长换届（布兰姆卸任、赫克托接任）；1477年老萨满格罗姆血舌死于氏族冲突；1478年老塞顿告老。此间降生：露易丝·维拉（1475）、爱丽丝·阿尔比恩（1479）。' },
+  { from: 1480, to: 1489, txt: '权力洗牌：1482年马可当选城邦议长；1485年巴尔杜尔长眠；1487年凛冬政变——威廉二世被绞杀，弗里德里希登基，帝国转向军事实体极权；1489年维克托病逝、孔苏埃洛退隐。此间降生：艾伦、瑟菲、卡拉克（1481）、米拉（1483）。' },
+  { from: 1490, to: 1492, txt: '变革前夜：1490年时钟塔推演"第五次魔王降世"被封存；1491年西境演习常态化；1492年发现新大陆乌尔坎，殖民热开启。' },
+  { from: 1493, to: 1495, txt: '山雨欲来：1493年殖民据点奠基与圣女大巡游并行；1494年莫尔加纳异动密级化；1495年蓝光谷采矿权之争白热化，渊蚀根冠初现异常。' },
+  { from: 1496, to: 1496, txt: '暴风雨前夜：四王储派系明朗化；夏初异世界召唤者悠真降临，西境2镇3男爵领被传送——大转移震动王国。' },
+  { from: 1497, to: 1497, txt: '变革纪：前两月暴风雨前夜；3月爱德华国王驾崩，王选旋涡开启；9月帝国大举入侵；乌尔加特血月会议后南下劫掠；莫尔加纳魔潮内收——主线帷幕拉开。' }
+];
+function izUpdateEraBrief() {
+  var el = document.getElementById('iz-era-brief');
+  if (!el) return;
+  var y = parseInt(document.getElementById('iz-start-year').value, 10) || 1497;
+  var past = [], future = [];
+  for (var i = 0; i < IZ_ERA_BRIEF.length; i++) {
+    var e = IZ_ERA_BRIEF[i];
+    var seg = '【' + e.from + (e.to !== e.from ? '-' + e.to : '') + '年】' + e.txt;
+    if (e.to < y) past.push(seg); else future.push(seg);
+  }
+  var html = '';
+  if (past.length) html += '<div style="color:#7a6a4d;"><b>往事：</b>' + past[past.length - 1] + '</div>';
+  for (var j = 0; j < future.length; j++) {
+    html += '<div style="color:#4a3623;' + (j === 0 ? 'font-weight:bold;' : 'opacity:.85;') + '">' + future[j] + '</div>';
+  }
+  if (!html) html = '<div style="opacity:.7">该年份暂无记录——史书尚待书写。</div>';
+  el.innerHTML = html;
+}
+document.getElementById('iz-start-year').addEventListener('change', izUpdateEraBrief);
+setTimeout(izUpdateEraBrief, 600);
+
 // ── 自定义开局年份（默认1497；写入 世界.日期 供 AI/纪元触发器遵守）──
 function izStartYear() {
   try {
@@ -10398,6 +10438,11 @@ function applyUndyingPreset() {
             { id: '圣光法师', name: '圣光法师', icon: '☀' },
             { id: '邪术师', name: '邪术师', icon: '🌑' },
             { id: '德鲁伊', name: '德鲁伊', icon: '🌿' },
+            { id: '魔兽使', name: '魔兽使', icon: '🐺' },
+            { id: '战团武士', name: '战团武士', icon: '🐃' },
+            { id: '血祭狂战士', name: '血祭狂战士', icon: '🩸' },
+            { id: '荒径猎手', name: '荒径猎手', icon: '🎯' },
+            { id: '荒灵祭司', name: '荒灵祭司', icon: '🕯' },
             { id: '精灵术士', name: '精灵术士', icon: '🧚' },
             { id: '神官', name: '神官', icon: '✝' },
             { id: '圣殿骑士', name: '圣殿骑士', icon: '⚜' },
