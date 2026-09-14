@@ -134,25 +134,26 @@
 .arx-btn.arx-danger{background:linear-gradient(180deg,#a0402a,#7a2e1e);}
 #arx-startRow{display:flex; gap:8px; align-items:center; flex:0 0 auto; padding:4px 2px;}
 #arx-vsHint{font-size:12px; color:var(--arx-ink2); flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-#arx-meCard{font-size:12px; line-height:1.8; color:var(--arx-ink); background:#fbf4e2; border:1px solid var(--arx-line); border-radius:6px; padding:13px 16px; max-height:40%; overflow-y:auto;}
+#arx-meCard{font-size:12px; line-height:1.8; color:var(--arx-ink); background:#fbf4e2; border:1px solid var(--arx-line); border-radius:6px; padding:16px 28px; max-height:40%; overflow-y:auto;}
 #arx-meCard b{color:var(--arx-gold);}
 .arx-me-top{display:flex; align-items:center; gap:12px; flex-wrap:wrap; border-bottom:1px dashed rgba(138,111,69,.45); padding-bottom:10px; margin-bottom:12px;}
 .arx-me-name{font-size:18px; font-weight:700; color:var(--arx-ink); letter-spacing:3px;}
 .arx-me-sub{font-size:11.5px; color:var(--arx-ink2);}
-.arx-me-rank{font-size:12px; color:#fff; background:linear-gradient(180deg,#7a5a2e,#5e4420); padding:4px 14px; border-radius:12px; letter-spacing:2px; margin-left:auto; border:1px solid rgba(216,183,102,.55); box-shadow:0 1px 0 #3a2c1a;}
+/* 徽章/格子必须 inline-block：inline 的垂直 padding 不占行框 → 文字贴着底色上下边（"徽章拥挤"根因） */
+.arx-me-rank{display:inline-block; font-size:12px; color:#fff; background:linear-gradient(180deg,#7a5a2e,#5e4420); padding:5px 18px; border-radius:13px; letter-spacing:2px; margin-left:auto; border:1px solid rgba(216,183,102,.55); box-shadow:0 1px 0 #3a2c1a; text-align:center;}
 .arx-me-bars{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px;}
-.arx-bar{position:relative; flex:1 1 110px; min-width:110px; height:21px; background:rgba(58,44,26,.15); border:1px solid var(--arx-line); border-radius:11px; overflow:hidden;}
+.arx-bar{position:relative; flex:1 1 110px; min-width:110px; height:22px; background:rgba(58,44,26,.15); border:1px solid var(--arx-line); border-radius:11px; overflow:hidden;}
 .arx-bar i{position:absolute; top:0; bottom:0; left:0; border-radius:11px 0 0 11px;}
 .arx-bar.hp i{background:linear-gradient(180deg,#c05a3a,#8a3520);}
 .arx-bar.mp i{background:linear-gradient(180deg,#4a7db3,#2d5580);}
 .arx-bar.sp i{background:linear-gradient(180deg,#5a9a4a,#38702c);}
 .arx-bar em{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-style:normal;
   color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.65); font-family:Consolas,monospace; letter-spacing:1px;}
-.arx-me-stats{display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px;}
-.arx-me-stats span{font-size:11.5px; font-family:Consolas,monospace; background:rgba(247,240,222,.95); border:1px solid var(--arx-line); border-radius:4px; padding:3px 11px; color:var(--arx-ink);}
+.arx-me-stats{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+.arx-me-stats span{display:inline-block; font-size:11.5px; font-family:Consolas,monospace; background:rgba(247,240,222,.95); border:1px solid var(--arx-line); border-radius:5px; padding:4px 13px; color:var(--arx-ink); text-align:center;}
 .arx-me-stats span.arx-def{color:var(--arx-gold); font-weight:700;}
-.arx-me-tags{display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px;}
-.arx-tag{font-size:11.5px; background:rgba(247,240,222,.95); border:1px solid var(--arx-line); border-radius:11px; padding:3px 12px; color:var(--arx-ink2); line-height:1.6;}
+.arx-me-tags{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
+.arx-tag{display:inline-block; font-size:11.5px; background:rgba(247,240,222,.95); border:1px solid var(--arx-line); border-radius:12px; padding:4px 14px; color:var(--arx-ink2); line-height:1.6; text-align:center;}
 .arx-tag b{color:var(--arx-ink); font-weight:600;}
 .arx-me-style{font-size:12px; color:var(--arx-ink2); border-top:1px dashed rgba(138,111,69,.35); padding-top:9px;}
 .arx-me-style b{color:var(--arx-ink);}
