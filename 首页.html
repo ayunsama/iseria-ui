@@ -1332,6 +1332,15 @@
                 <label class="jrpg-cc-label">身份背景</label>
                 <select class="jrpg-cc-select" id="cc-identity-preset">
                     <option value="" disabled selected>-- 翻阅命运之书 --</option>
+                    <optgroup label="◆ 当前开场白（随上方选择联动）">
+                      <option value="__OPENING_1__">📖 从零转生（开场白①）</option>
+                      <option value="__OPENING_2__">🏛️ 先民苏醒（开场白②）</option>
+                      <option value="__OPENING_3__">🌌 异世界穿越（开场白③）</option>
+                      <option value="__OPENING_4__">⚔️ 勇者命格·战场觉醒（开场白④）</option>
+                      <option value="__OPENING_5__">🚌 群穿·命运之轮（开场白⑤）</option>
+                      <option value="__OPENING_6__">🌟 世界眷顾之子（开场白⑥）</option>
+                      <option value="__OPENING_7__">🪽 翼民骑士（开场白⑦）</option>
+                    </optgroup>
                     <option value="保留前世记忆，在这个世界作为一个毫无防备的婴儿重新出生，一切从零开始。">👶 从零转生 — 重活一世的无知新生</option>
                     <option value="时钟塔激进派的叛逃研究员，因窃取禁忌研究资料而被执行部通缉。">🔬 时钟塔叛逃研究员 — 被追猎的知识窃贼</option>
                     <option value="阿尔比恩异端审判庭的头号猎物，被扣上莫须有的渎神罪名逃亡至今。">⛓️ 异端审判庭逃犯 — 圣光之下的猎物</option>
@@ -1529,7 +1538,17 @@
                         <option value="莫尔加纳·潮息带外缘前哨">莫尔加纳·潮息带外缘 (魔兽前哨/传送法阵终端)</option>
                     </optgroup>
                     <!-- 大炎龙朝地区（由DLC控制） -->
-                </select>
+                                    <optgroup label="附属小世界（裂隙降临）">
+                        <option value="小世界·埃雷松">埃雷松 (骑士与余烬)</option>
+                        <option value="小世界·绿华之庭">绿华之庭 (巨树世界)</option>
+                        <option value="小世界·云中秘境">云中秘境 (浮空群岛)</option>
+                        <option value="小世界·霜穹">霜穹 (北境与霜龙)</option>
+                        <option value="小世界·凯坦">凯坦 (沙海与青铜王座)</option>
+                        <option value="小世界·烬渊">烬渊 (永夜与萤城)</option>
+                        <option value="小世界·鳞荒">鳞荒 (蛮荒与龙巢)</option>
+                        <option value="小世界·先民遗迹">先民遗迹 (沉默方舟)</option>
+                    </optgroup>
+</select>
             </div>
 
             <!-- ====== 第2页：属性 ====== -->
@@ -4584,6 +4603,16 @@ function applyOpeningPreset(index) {
         case 7: // 开场白7：翼民骑士·地脉锚点
             applyWingKnightPreset();
             break;
+    }
+
+    // ---- 身份背景下拉联动：显示所选开场白小标题 ----
+    var opSel = document.getElementById('cc-identity-preset');
+    if (opSel) {
+        var opVal = '__OPENING_' + index + '__';
+        if (opSel.querySelector('option[value="' + opVal + '"]')) {
+            opSel.value = opVal;
+            opSel.classList.remove('jrpg-locked-select');
+        }
     }
 
     // ---- 跳转到第零楼的对应swipe页 ----
