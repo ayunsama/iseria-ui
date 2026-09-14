@@ -229,6 +229,7 @@
       <button class="arx-tab cur" id="arx-tabDuel">🥊 斗蛐蛐</button>
       <button class="arx-tab" id="arx-tabMe">🛡 玩家挑战</button>
     </div>
+    <button class="arx-btn" id="arx-backBtn" style="display:none;" title="返回选手准备区">← 返回</button>
     <button id="arx-closebtn">✕ 关闭</button>
   </div>
   <div id="arx-main">
@@ -259,7 +260,6 @@
       </div>
       <div id="arx-historyRow">
         <select id="arx-histSel"><option value="">📜 战斗记录…</option></select>
-        <button class="arx-btn" id="arx-backBtn" style="display:none;">← 返回准备区</button>
       </div>
     </div>
     <div id="arx-result"></div>
@@ -620,10 +620,10 @@
 
 ═══ 输出协议（严格三段、顺序固定、缺一不可）═══
 <构筑推演>
-（内嵌思维链一：数据卡整理与战力对比。若选手没有完整数据卡，按其描述与等阶，参照位阶表与同类单位数值现场生成完整数据卡：[名称][等阶][等级][HP|当前|最大][防御值][属性六维][攻击|名|类型|命中修正|伤害骰|特效][能力][机制?][弱点/抗性/免疫?][奥义（史诗级以上必备）][权能（传说级以上必备）]，逐项写明推导理由。随后给出双方战力对比与胜负手分析，以及先攻预估。）
+（内嵌思维链一：数据卡整理与战力对比。若选手没有完整数据卡，按其描述与等阶，参照位阶表与同类单位数值现场生成完整数据卡：[名称][等阶][等级][HP|当前|最大][防御值][属性六维][攻击|名|类型|命中修正|伤害骰|特效][能力][机制?][弱点/抗性/免疫?][奥义（史诗级以上必备）][权能（传说级以上必备）]，逐项写明推导理由。随后给出双方战力对比与胜负手分析，以及先攻预估。本段必须至少 200 字实质内容，禁止输出空标签壳。）
 </构筑推演>
 <战斗推演>
-（内嵌思维链二：逐回合推演。先攻掷骰算式→按行动序逐人推演：行动选择逻辑（基于数据卡能力与当前态势）→每次攻击/施法的掷骰算式与命中判定→伤害计算全过程→HP扣减台账（名：旧值→新值）→机制状态核对。允许对重复普攻简写，但所有数值变化必须完整可追溯。）
+（内嵌思维链二：逐回合推演。先攻掷骰算式→按行动序逐人推演：行动选择逻辑（基于数据卡能力与当前态势）→每次攻击/施法的掷骰算式与命中判定→伤害计算全过程→HP扣减台账（名：旧值→新值）→机制状态核对。允许对重复普攻简写，但所有数值变化必须完整可追溯。本段必须至少 200 字实质内容，禁止输出空标签壳。）
 </战斗推演>
 <战报>
 ⚔️竞技场 ${isMe ? '挑战' : '对决'} 我方:[${nameA}] vs 敌方:[${nameB}]
@@ -662,14 +662,12 @@ ${cardsB.join('\n\n')}
             const cardsB = await fighterCards(picked.B, mode === 'me' ? '敌方' : '蓝方');
             const prompt = buildBattlePrompt(sideAList, picked.B, cardsA, cardsB);
             const out = await llm(prompt);
-            const seg = (tag) => { const m = out.match(new RegExp('<' + tag + '>[\\s\\S]*?</' + tag + '>', 'i')); return m ? m[0] : ''; };
-            const buildTxt = seg('构筑推演');
-            const simTxt = seg('战斗推演');
-            const reportTxt = (out.match(/<战报>([\s\S]*?)<\/战报>/i) || ['', ''])[1].trim() || out.trim();
+            const { buildTxt, simTxt, reportTxt, degraded } = extractArenaSections(out);
             const blocks = [];
-            if (buildTxt) blocks.push({ title: '🧬 构筑推演（数据卡生成与战力对比）', body: buildTxt.replace(/<\/?构筑推演>/g, '').trim(), open: false });
-            if (simTxt) blocks.push({ title: '🧠 战斗推演（逐回合掷骰推演）', body: simTxt.replace(/<\/?战斗推演>/g, '').trim(), open: false });
+            if (buildTxt) blocks.push({ title: '🧬 构筑推演（数据卡生成与战力对比）', body: buildTxt, open: false });
+            if (simTxt) blocks.push({ title: '🧠 战斗推演（逐回合掷骰推演）', body: simTxt, open: false });
             blocks.push({ title: '📜 战报', raw: reportTxt, open: true });
+            if (degraded) toast('模型未严格按三段协议输出，已自动收纳全部内容');
             const key = 'iseria_arena_hist_' + Date.now();
             try {
                 localStorage.setItem(key, JSON.stringify({ t: Date.now(), a: $('#arx-vsHint').textContent, build: buildTxt, sim: simTxt, report: reportTxt }));
@@ -723,6 +721,46 @@ ${cardsB.join('\n\n')}
     }
 
     /* ================== 战报渲染 ================== */
+    /** 案例：三段协议的宽松提取——真实模型常不守标签协议（漏闭合/用【】/全混在正文），逐级降级兜底 */
+    function extractArenaSections(out) {
+        const TAGS = ['构筑推演', '战斗推演', '战报'];
+        const seg = (tag) => {
+            // 1) 标准闭合标签
+            let m = out.match(new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>', 'i'));
+            if (m && m[1].trim()) return m[1].trim();
+            // 2) 有开无闭（吃到下一个输出标签或文末）
+            m = out.match(new RegExp('<' + tag + '>([\\s\\S]*?)(?=<(?:构筑推演|战斗推演|战报)>|【(?:构筑推演|战斗推演|战报)】|$)', 'i'));
+            if (m && m[1].trim()) return m[1].trim();
+            // 3) 【tag】变体
+            m = out.match(new RegExp('【' + tag + '】([\\s\\S]*?)(?=<(?:构筑推演|战斗推演|战报)>|【(?:构筑推演|战斗推演|战报)】|$)', 'i'));
+            if (m && m[1].trim()) return m[1].trim();
+            return '';
+        };
+        let buildTxt = seg('构筑推演');
+        let simTxt = seg('战斗推演');
+        let reportTxt = seg('战报');
+        let degraded = false;
+        // 战报起点锚：优先协议标签；完全没有标签时用 ⚔️ 战报头行
+        const reportStart = () => {
+            let i = out.search(/<战报>|【战报】/i);
+            if (i < 0) i = out.search(/⚔/);
+            return i;
+        };
+        // 兜底 A：完全没有战报标签 → 锚点之后的文本即战报；连锚点都没有 → 全文即战报
+        if (!reportTxt) {
+            const idx = reportStart();
+            reportTxt = (idx >= 0 ? out.slice(idx).replace(/<\/?战报>/gi, '').trim() : out.trim()) || out.trim();
+            degraded = true;
+        }
+        // 兜底 B：推演两段全空 → 把战报锚点之前的全部正文（剥标签）合并为推演块
+        if (!buildTxt && !simTxt) {
+            const idx = reportStart();
+            const pre = (idx > 0 ? out.slice(0, idx) : '').replace(/<\/?(?:构筑推演|战斗推演)>/gi, '').trim();
+            if (pre) { buildTxt = pre + '\n（注：模型未按协议分段，以上为战报前的全部推演内容）'; degraded = true; }
+        }
+        return { buildTxt, simTxt, reportTxt, degraded };
+    }
+
     function renderReportRow(line) {
         const cls = /状态变更/.test(line) ? ' arx-hp' : (/掷骰|伤害/.test(line) ? ' arx-dice' : '');
         return `<span class="arx-row${cls}">${esc(line.trim())}</span>`;
@@ -755,7 +793,7 @@ ${cardsB.join('\n\n')}
             const body = co.querySelector('.arx-co-b');
             if (b.raw != null) { body.id = 'arx-report'; body.innerHTML = renderReportBody(b.raw); }
             else body.textContent = b.body || '';
-            co.querySelector('.arx-co-h').addEventListener('click', () => co.classList.toggle('closed'));
+            co.querySelector('.arx-co-h').addEventListener('click', () => co.classList.toggle('open'));
             box.appendChild(co);
         }
         box.scrollTop = 0;
