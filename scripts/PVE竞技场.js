@@ -110,8 +110,11 @@
 .arx-pick .arx-x{cursor:pointer; color:var(--arx-red); font-weight:700; flex:0 0 auto; padding:0 4px;}
 .arx-pool{flex:1 1 auto; min-height:80px; overflow-y:auto; border:1px dashed var(--arx-line); border-radius:4px; background:rgba(251,244,226,.5); padding:6px;}
 .arx-group{font-size:11px; letter-spacing:1px; color:var(--arx-ink2); margin:6px 0 3px; border-bottom:1px dashed rgba(138,111,69,.35);}
-.arx-cand{display:inline-block; cursor:pointer; font-size:11.5px; margin:2px 3px; padding:3px 9px; text-align:left;
-  max-width:100%; white-space:normal; word-break:break-word; line-height:1.7; vertical-align:top;
+/* 选手胶囊：!important 锁定换行与宽度约束——酒馆主题的全局 span 样式会覆盖普通声明，
+   导致 inline-block 背景框不随内容换行 → 文字横穿胶囊底色 */
+#arx-overlay .arx-cand{display:inline-block !important; cursor:pointer; font-size:11.5px !important; line-height:1.65 !important;
+  margin:2px 3px; padding:3px 10px; text-align:left; vertical-align:top;
+  max-width:100% !important; white-space:normal !important; word-break:break-word !important; overflow-wrap:anywhere !important;
   background:#f7f0de; border:1px solid var(--arx-line); border-radius:10px; transition:.12s;}
 .arx-cand:hover{border-color:var(--arx-gold); background:#fff7e4;}
 .arx-cand.sel{background:linear-gradient(180deg,#7a5a2e,#5e4420); color:#fff; border-color:#3a2c1a;}
@@ -208,7 +211,7 @@
   .arx-pool{ min-height:60px; max-height:170px; }
   .arx-picked{ max-height:120px; }
   #arx-meCard{ max-height:150px; }
-  .arx-cand{ font-size:10.5px; padding:2px 6px; }
+  .arx-cand{ font-size:10.5px !important; padding:2px 8px; }
   .arx-btn{ font-size:12px; padding:6px 12px; }
   #arx-report{ font-size:12px; padding:10px; }
   #arx-report .arx-row{ font-size:10px; }
@@ -243,9 +246,10 @@
         </div>
       </div>
       <div id="arx-searchRow">
-        <input id="arx-search" placeholder="搜索世界书条目（角色 / 魔兽 / 迷宫守卫 / DLC）…">
+        <input id="arx-search" placeholder="搜世界书条目；或写下敌人描述后点 ➕ 加入指定一方（自定义敌人）">
         <button class="arx-btn" id="arx-searchBtn" title="在两边的候补池里显示搜索结果">🔍 搜索</button>
-        <button class="arx-btn" id="arx-customBtn" title="把输入框文字作为自定义选手描述加入对方">➕ 自定义</button>
+        <button class="arx-btn" id="arx-customA" title="把输入框的文字作为自定义选手加入红方">➕ 红方</button>
+        <button class="arx-btn" id="arx-customB" title="把输入框的文字作为自定义选手加入蓝方/敌方">➕ 蓝方</button>
       </div>
       <div id="arx-meCard" style="display:none;"></div>
       <div id="arx-startRow">
@@ -523,14 +527,15 @@
         toast(`命中 ${hits.length} 条，点击候补即加入对应方`);
     }
 
-    function addCustom() {
+    function addCustom(side) {
         const d = $('#arx-search').value.trim();
-        if (!d) { toast('先在输入框写下敌人描述'); return; }
+        if (!d) { toast('先在输入框写下敌人/选手描述，再点 ➕ 加入'); return; }
+        if (mode === 'me' && side === 'A') side = 'B'; // 玩家挑战：我方固定玩家，自定义一律进敌方
         const item = { n: d.length > 18 ? d.slice(0, 18) + '…' : d, tier: '自定义', src: { type: 'desc', d } };
-        const target = mode === 'me' ? 'B' : (picked.A.length <= picked.B.length ? 'A' : 'B');
-        picked[target].push(item);
-        renderPicked(target); updateHint();
+        picked[side].push(item);
+        renderPicked(side); updateHint();
         $('#arx-search').value = '';
+        toast(`已加入${side === 'A' ? '红方' : '蓝方'}：${item.n}`);
     }
 
     /* ================== 选手数据卡收集 ================== */
@@ -768,6 +773,10 @@ ${cardsB.join('\n\n')}
         $('#arx-tabDuel').classList.toggle('cur', m === 'duel');
         $('#arx-tabMe').classList.toggle('cur', m === 'me');
         $('#arx-analyzeBtn').style.display = m === 'me' ? '' : 'none';
+        // 自定义按钮：斗蛐蛐=红/蓝各一个；玩家挑战=我方固定玩家，只有敌方
+        $('#arx-customA').style.display = m === 'me' ? 'none' : '';
+        $('#arx-customB').textContent = m === 'me' ? '➕ 敌方' : '➕ 蓝方';
+        $('#arx-customB').title = m === 'me' ? '把输入框的文字作为自定义敌人加入敌方' : '把输入框的文字作为自定义选手加入蓝方';
         renderSideTitles();
         refreshMeCard();
         if (m === 'me') {
@@ -890,7 +899,8 @@ ${cardsB.join('\n\n')}
     $('#arx-tabDuel').addEventListener('click', () => setMode('duel'));
     $('#arx-tabMe').addEventListener('click', () => setMode('me'));
     $('#arx-searchBtn').addEventListener('click', () => { doSearch(); });
-    $('#arx-customBtn').addEventListener('click', addCustom);
+    $('#arx-customA').addEventListener('click', () => addCustom('A'));
+    $('#arx-customB').addEventListener('click', () => addCustom('B'));
     $('#arx-search').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
     $('#arx-analyzeBtn').addEventListener('click', doAnalyze);
     $('#arx-startBtn').addEventListener('click', startBattle);
