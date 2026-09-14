@@ -7390,6 +7390,118 @@ var TRT_TECH = {
         } catch (e) { console.warn('[正文美化持久化] 安装失败（不影响羊皮纸显示）:', e); }
     })();
     </script>
+    <script>
+    /* ============================================================
+       时空存档·读档补丁（正文渲染器按钮排交互）
+       按钮由卡内正则（正文美化暗色）渲染：data-iz-save / data-iz-load / data-iz-info
+       楼层号从点击处最近的 [mesid]/[message_id]/[mes] DOM 祖先解析。
+       存档数据存聊天变量 isuria_save_slots（type:'chat'，分聊天隔离）：
+       { "1": {floor:12, date:"圣光历1497年3月4日", snippet:"..."}, ... }
+       读档 = 删除存档楼之后的所有楼层并刷新（等效回档）。
+       幂等：window.__isuriaSavePatch 标记，只安装一次。
+       ============================================================ */
+    (function () {
+        try {
+            function install(win) {
+                try {
+                    if (!win || win.__isuriaSavePatch) return;
+                    win.__isuriaSavePatch = true;
+                    var doc = win.document;
+                    if (!doc || !doc.addEventListener) return;
+                    function TH() { return (win.TavernHelper) || (win.parent && win.parent.TavernHelper) || (win.top && win.top.TavernHelper) || null; }
+                    function floorOf(el) {
+                        while (el && el !== doc.body) {
+                            var m = el.getAttribute && (el.getAttribute('mesid') || el.getAttribute('message_id') || el.getAttribute('mes'));
+                            if (m !== null && m !== undefined && m !== '') { var n = parseInt(m, 10); if (!isNaN(n)) return n; }
+                            el = el.parentNode;
+                        }
+                        return null;
+                    }
+                    function getSlots(cb) {
+                        var th = TH(); if (!th || !th.getVariables) { cb({}); return; }
+                        th.getVariables({ type: 'chat' }).then(function (v) { cb(v && v.isuria_save_slots ? v.isuria_save_slots : {}); }).catch(function () { cb({}); });
+                    }
+                    function setSlots(slots, cb) {
+                        var th = TH(); if (!th || !th.insertOrAssignVariables) { cb && cb(false); return; }
+                        th.insertOrAssignVariables({ isuria_save_slots: slots }, { type: 'chat' }).then(function () { cb && cb(true); }).catch(function () { cb && cb(false); });
+                    }
+                    function dateOfFloor(floor) {
+                        try {
+                            var th = TH();
+                            var ctx = th && th.getChatMessages ? th.getChatMessages(floor) : null;
+                            var mes = ctx && ctx.message ? String(ctx.message) : '';
+                            var m = mes.match(/圣光历\d+年(?:\s*\d+月)?(?:\s*\d+日)?/);
+                            return m ? m[0] : '';
+                        } catch (e) { return ''; }
+                    }
+                    function refreshInfo() {
+                        getSlots(function (slots) {
+                            var boxes = doc.querySelectorAll('[data-iz-savebar]');
+                            for (var i = 0; i < boxes.length; i++) {
+                                var box = boxes[i];
+                                var msg = box.closest ? box.closest('[mesid],[message_id],[mes]') : null;
+                                var spans = box.querySelectorAll('[data-iz-info]');
+                                for (var s = 0; s < spans.length; s++) {
+                                    var parts = [];
+                                    for (var k = 1; k <= 3; k++) {
+                                        var sl = slots[k];
+                                        parts.push('存' + k + ':' + (sl ? ('楼' + sl.floor + (sl.date ? '·' + sl.date : '')) : '空'));
+                                    }
+                                    spans[s].textContent = parts.join('　');
+                                }
+                                var btns = box.querySelectorAll('[data-iz-load]');
+                                for (var b = 0; b < btns.length; b++) {
+                                    var sl2 = slots[btns[b].getAttribute('data-iz-load')];
+                                    btns[b].style.opacity = sl2 ? '1' : '.45';
+                                }
+                            }
+                        });
+                    }
+                    doc.addEventListener('click', function (ev) {
+                        var t = ev.target;
+                        while (t && t !== doc.body && !(t.getAttribute && (t.getAttribute('data-iz-save') || t.getAttribute('data-iz-load')))) t = t.parentNode;
+                        if (!t || t === doc.body) return;
+                        var th = TH(); if (!th) return;
+                        var bar = t.closest ? t.closest('[data-iz-savebar]') : null;
+                        var floor = floorOf(bar || t);
+                        if (floor === null) { alert('未能定位当前楼层'); return; }
+                        var sv = t.getAttribute('data-iz-save');
+                        if (sv) {
+                            getSlots(function (slots) {
+                                var slotsNow = slots || {};
+                                slotsNow[sv] = { floor: floor, date: dateOfFloor(floor), snippet: '' };
+                                setSlots(slotsNow, function (okr) {
+                                    if (okr !== false) { if (th.toastr) th.toastr.success('已存档：楼' + floor, '时空存档'); refreshInfo(); }
+                                    else if (th.toastr) th.toastr.error('存档失败', '时空存档');
+                                });
+                            });
+                            return;
+                        }
+                        var ld = t.getAttribute('data-iz-load');
+                        if (ld) {
+                            getSlots(function (slots) {
+                                var sl = slots && slots[ld];
+                                if (!sl || sl.floor === undefined) { if (th.toastr) th.toastr.info('该存档槽为空', '时空存档'); return; }
+                                var latest = th.getLastMessageId ? th.getLastMessageId() : null;
+                                if (latest === null || latest <= sl.floor) { if (th.toastr) th.toastr.info('当前已在存档点或更早，无需读档', '时空存档'); return; }
+                                if (!win.confirm('读档将回溯到 第' + sl.floor + '楼' + (sl.date ? '（' + sl.date + '）' : '') + '，其后的所有剧情将被删除。确定吗？')) return;
+                                var ids = []; for (var f2 = sl.floor + 1; f2 <= latest; f2++) ids.push(f2);
+                                th.deleteChatMessages(ids).then(function () {
+                                    if (th.toastr) th.toastr.success('已回溯到 第' + sl.floor + '楼', '时空存档');
+                                }).catch(function (e2) { if (th.toastr) th.toastr.error('读档失败: ' + (e2 && e2.message || e2), '时空存档'); });
+                            });
+                        }
+                    });
+                    setInterval(refreshInfo, 2000);
+                    setTimeout(refreshInfo, 800);
+                } catch (e) { console.warn('[时空存档补丁] 安装失败:', e); }
+            }
+            try { install(window); } catch (e) {}
+            try { install(window.parent); } catch (e) {}
+            try { if (window.top && window.top !== window.parent) install(window.top); } catch (e) {}
+        } catch (e) { console.warn('[时空存档补丁] 外层异常:', e); }
+    })();
+    </script>
     <div class="jrpg-status-wrapper">
         <!-- 全局修改按钮 -->
         <button id="btn-open-editor" class="jrpg-global-edit-btn" title="上帝模式：任意增删改世界变量">⚙️ 全局修改器</button>
