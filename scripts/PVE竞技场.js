@@ -110,7 +110,8 @@
 .arx-pick .arx-x{cursor:pointer; color:var(--arx-red); font-weight:700; flex:0 0 auto; padding:0 4px;}
 .arx-pool{flex:1 1 auto; min-height:80px; overflow-y:auto; border:1px dashed var(--arx-line); border-radius:4px; background:rgba(251,244,226,.5); padding:6px;}
 .arx-group{font-size:11px; letter-spacing:1px; color:var(--arx-ink2); margin:6px 0 3px; border-bottom:1px dashed rgba(138,111,69,.35);}
-.arx-cand{display:inline-block; cursor:pointer; font-size:11.5px; margin:2px 3px; padding:3px 8px;
+.arx-cand{display:inline-block; cursor:pointer; font-size:11.5px; margin:2px 3px; padding:3px 9px; text-align:left;
+  max-width:100%; white-space:normal; word-break:break-word; line-height:1.7; vertical-align:top;
   background:#f7f0de; border:1px solid var(--arx-line); border-radius:10px; transition:.12s;}
 .arx-cand:hover{border-color:var(--arx-gold); background:#fff7e4;}
 .arx-cand.sel{background:linear-gradient(180deg,#7a5a2e,#5e4420); color:#fff; border-color:#3a2c1a;}
@@ -127,8 +128,28 @@
 .arx-btn.arx-danger{background:linear-gradient(180deg,#a0402a,#7a2e1e);}
 #arx-startRow{display:flex; gap:8px; align-items:center; flex:0 0 auto; padding:4px 2px;}
 #arx-vsHint{font-size:12px; color:var(--arx-ink2); flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-#arx-meCard{font-size:12px; line-height:1.7; color:var(--arx-ink); background:#fbf4e2; border:1px solid var(--arx-line); border-radius:4px; padding:8px; max-height:34%; overflow-y:auto;}
+#arx-meCard{font-size:12px; line-height:1.7; color:var(--arx-ink); background:#fbf4e2; border:1px solid var(--arx-line); border-radius:4px; padding:9px 10px; max-height:34%; overflow-y:auto;}
 #arx-meCard b{color:var(--arx-gold);}
+.arx-me-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-bottom:1px dashed rgba(138,111,69,.45); padding-bottom:6px; margin-bottom:7px;}
+.arx-me-name{font-size:16px; font-weight:700; color:var(--arx-ink); letter-spacing:2px;}
+.arx-me-sub{font-size:11px; color:var(--arx-ink2);}
+.arx-me-rank{font-size:11px; color:#fff; background:linear-gradient(180deg,#7a5a2e,#5e4420); padding:2px 9px; border-radius:9px; letter-spacing:1px; margin-left:auto;}
+.arx-me-bars{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:7px;}
+.arx-bar{position:relative; flex:1 1 96px; min-width:96px; height:18px; background:rgba(58,44,26,.15); border:1px solid var(--arx-line); border-radius:9px; overflow:hidden;}
+.arx-bar i{position:absolute; top:0; bottom:0; left:0; border-radius:9px 0 0 9px;}
+.arx-bar.hp i{background:linear-gradient(180deg,#c05a3a,#8a3520);}
+.arx-bar.mp i{background:linear-gradient(180deg,#4a7db3,#2d5580);}
+.arx-bar.sp i{background:linear-gradient(180deg,#5a9a4a,#38702c);}
+.arx-bar em{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:10px; font-style:normal;
+  color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.65); font-family:Consolas,monospace; letter-spacing:1px;}
+.arx-me-stats{display:flex; gap:4px; flex-wrap:wrap; margin-bottom:7px;}
+.arx-me-stats span{font-size:11px; font-family:Consolas,monospace; background:rgba(247,240,222,.95); border:1px solid var(--arx-line); border-radius:3px; padding:2px 7px; color:var(--arx-ink);}
+.arx-me-stats span.arx-def{color:var(--arx-gold); font-weight:700;}
+.arx-me-tags{display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;}
+.arx-tag{font-size:11px; background:rgba(247,240,222,.95); border:1px solid var(--arx-line); border-radius:9px; padding:2px 9px; color:var(--arx-ink2);}
+.arx-tag b{color:var(--arx-ink); font-weight:600;}
+.arx-me-style{font-size:11.5px; color:var(--arx-ink2); border-top:1px dashed rgba(138,111,69,.35); padding-top:5px;}
+.arx-me-style b{color:var(--arx-ink);}
 #arx-result{flex:1 1 auto; min-height:0; display:none; flex-direction:column; gap:8px; overflow-y:auto; padding:2px;}
 .arx-co{background:rgba(30,24,15,.93); color:#e8d5a8; border:1.5px solid var(--arx-gold); border-radius:6px; overflow:hidden; flex:0 0 auto;}
 .arx-co-h{cursor:pointer; padding:8px 14px; font-size:13px; letter-spacing:2px; color:#f0d48a;
@@ -322,9 +343,8 @@
         return null;
     }
 
-    /** 主角构筑 → 精简战斗卡文本 */
-    function buildMeCard(st) {
-        const H = st?.主角 ?? {};
+    /** 主角构筑 → 精简战斗卡文本（提示词用） */
+    function buildMeCard(H) {
         const L = [];
         const put = (s) => L.push(s);
         const bi = H.基础信息 ?? {};
@@ -359,6 +379,43 @@
         return L.join('\n');
     }
 
+    /** 主角构筑 → 结构化渲染（玩家栏显示用） */
+    function renderMeCard(H) {
+        const bi = H.基础信息 ?? {};
+        const at = H.基础属性 ?? {};
+        const st2 = H.基础状态 ?? {};
+        const esc2 = esc;
+        const sub = [bi.种族, bi.性别, (bi.年龄 ? bi.年龄 + '岁' : '')].filter(Boolean).join(' · ');
+        const rank = `${H.等阶 ?? '普通'} · 总等级 ${st2.总等级 ?? '?'}`;
+        const bar = (label, cur, max, cls) => {
+            const c = Number(cur ?? 0), m = Number(max ?? 0);
+            const pct = m > 0 ? Math.max(0, Math.min(100, c / m * 100)) : 0;
+            return `<div class="arx-bar ${cls}"><i style="width:${pct}%"></i><em>${label} ${c}/${m}</em></div>`;
+        };
+        const stats = [
+            ['力', at.力量], ['敏', at.敏捷], ['体', at.体质], ['智', at.智力], ['感', at.感知], ['魅', at.魅力],
+        ].map(([n, v]) => `<span>${n} ${v ?? 10}</span>`).join('') + `<span class="arx-def">防御 ${H.防御值 ?? 10}</span>`;
+        const tags = [];
+        const jobs = st2.职业信息 ?? {};
+        for (const [n, j] of Object.entries(jobs)) tags.push(`<span class="arx-tag">❖ <b>${n}</b> Lv${j?.等级 ?? '?'}</span>`);
+        for (const [, v] of Object.entries(H.资产与能力?.装备栏 ?? {})) {
+            if (v && (v.物品名 || v.品阶)) tags.push(`<span class="arx-tag" title="${esc2(v.特别机制 || '')}">⚔ <b>${esc2(v.物品名 || '?')}</b>${v.品阶 ? '·' + esc2(v.品阶) : ''}</span>`);
+        }
+        for (const [n, v] of Object.entries(H.资产与能力?.角色技能 ?? {})) tags.push(`<span class="arx-tag">✦ <b>${esc2(n)}</b> Lv${v?.等级 ?? '?'}</span>`);
+        for (const [n, v] of Object.entries(H.资产与能力?.魔法栏 ?? {})) tags.push(`<span class="arx-tag">✨ <b>${esc2(n)}</b> MP${v?.消耗MP ?? '?'}</span>`);
+        for (const [n, v] of Object.entries(H.资产与能力?.神术栏 ?? {})) tags.push(`<span class="arx-tag">☾ <b>${esc2(n)}</b> MP${v?.消耗MP ?? '?'}</span>`);
+        for (const [n, v] of Object.entries(H.资产与能力?.加护 ?? {})) tags.push(`<span class="arx-tag">⚜ <b>${esc2(n)}</b></span>`);
+        for (const [n, v] of Object.entries(H.资产与能力?.权能 ?? {})) tags.push(`<span class="arx-tag">◈ <b>${esc2(n)}</b></span>`);
+        for (const [n, v] of Object.entries(H.资产与能力?.奥义 ?? {})) tags.push(`<span class="arx-tag">★ <b>${esc2(n)}</b> SP${v?.消耗SP ?? '-'}</span>`);
+        const styleLine = bi.战斗方式 ? `<div class="arx-me-style">战斗方式：<b>${esc2(bi.战斗方式)}</b></div>` : '';
+        return `<div class="arx-me-top"><span class="arx-me-name">${esc2(bi.姓名 || '无名者')}</span>` +
+            `<span class="arx-me-sub">${esc2(sub)}</span><span class="arx-me-rank">${esc2(rank)}</span></div>` +
+            `<div class="arx-me-bars">${bar('HP', st2.HP?.当前, st2.HP?.最大, 'hp')}${bar('MP', st2.MP?.当前, st2.MP?.最大, 'mp')}${bar('SP', st2.SP?.当前, st2.SP?.最大, 'sp')}</div>` +
+            `<div class="arx-me-stats">${stats}</div>` +
+            (tags.length ? `<div class="arx-me-tags">${tags.join('')}</div>` : '') +
+            styleLine;
+    }
+
     function refreshMeCard() {
         const card = $('#arx-meCard');
         if (mode !== 'me') { card.style.display = 'none'; return; }
@@ -369,9 +426,10 @@
             meInfo = null;
             return;
         }
-        meInfo = { text: buildMeCard(st), name: (st.主角?.基础信息?.姓名 || '玩家'), tier: st.主角?.等阶 || '普通' };
+        const H = st.主角;
+        meInfo = { text: buildMeCard(H), name: (H?.基础信息?.姓名 || '玩家'), tier: H?.等阶 || '普通' };
         card.style.display = '';
-        card.innerHTML = meInfo.text.split('\n').map(l => l.startsWith('姓名') ? `<b>${l}</b>` : l).join('<br>');
+        card.innerHTML = renderMeCard(H);
     }
 
     /* ================== 选手区渲染 ================== */
@@ -739,17 +797,19 @@ ${cardsB.join('\n\n')}
         }
     }
 
-    // fab 拖动（mouse + touch；tap 不阻止合成 click）
+    // fab 拖动：Pointer Events 统一鼠标/触摸 + setPointerCapture——
+    // 此前用 pdoc mousemove/mouseup，鼠标移入楼层内容 iframe 时 mouseup 被吞 → _fabDrag 卡 true → fab 永久跟随鼠标；
+    // capture 后所有 pointer 事件定向派发到 fab，指针进入 iframe/离开窗口也不会丢 up
     let _fabDrag = false, _fabMoved = false, _fabX = 0, _fabY = 0, _fabOX = 0, _fabOY = 0, _fabMovedAt = 0;
-    fab.addEventListener('mousedown', e => {
-        if (e.button !== 0) return;
+    fab.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         _fabDrag = true; _fabMoved = false;
         const r = fab.getBoundingClientRect();
         _fabOX = e.clientX - r.left; _fabOY = e.clientY - r.top;
         _fabX = e.clientX; _fabY = e.clientY;
-        e.preventDefault();
+        try { fab.setPointerCapture(e.pointerId); } catch (err) {}
     });
-    pdoc.addEventListener('mousemove', e => {
+    fab.addEventListener('pointermove', e => {
         if (!_fabDrag) return;
         if (!_fabMoved && Math.abs(e.clientX - _fabX) + Math.abs(e.clientY - _fabY) < 5) return;
         _fabMoved = true;
@@ -774,45 +834,29 @@ ${cardsB.join('\n\n')}
         }
         _fabDrag = false;
     }
-    pdoc.addEventListener('mouseup', fabDragEnd);
-    fab.addEventListener('touchstart', e => {
-        if (e.touches.length !== 1) return;
-        const t = e.touches[0];
-        _fabDrag = true; _fabMoved = false;
-        const r = fab.getBoundingClientRect();
-        _fabOX = t.clientX - r.left; _fabOY = t.clientY - r.top;
-        _fabX = t.clientX; _fabY = t.clientY;
-    }, { passive: true });
-    pdoc.addEventListener('touchmove', e => {
-        if (!_fabDrag || e.touches.length !== 1) return;
-        const t = e.touches[0];
-        if (!_fabMoved && Math.abs(t.clientX - _fabX) + Math.abs(t.clientY - _fabY) < 6) return;
-        _fabMoved = true;
-        fab.classList.add('dragging');
-        fab.style.left = (t.clientX - _fabOX) + 'px';
-        fab.style.top = (t.clientY - _fabOY) + 'px';
-        fab.style.right = 'auto'; fab.style.bottom = 'auto';
-        _fabX = t.clientX; _fabY = t.clientY;
-        e.preventDefault();
-    }, { passive: false });
-    pdoc.addEventListener('touchend', fabDragEnd);
-    pdoc.addEventListener('touchcancel', fabDragEnd);
+    fab.addEventListener('pointerup', fabDragEnd);
+    fab.addEventListener('pointercancel', fabDragEnd);
+    // 双保险：capture 事件冒泡兜底（target=fab 也冒泡到 pdoc）
+    pdoc.addEventListener('pointerup', fabDragEnd);
     fab.addEventListener('click', () => {
         if (Date.now() - _fabMovedAt < 400) return;
         toggle();
     });
 
-    // 窗口顶栏拖动（mouse + touch；手机全屏锁定跳过）
+    // 窗口顶栏拖动：Pointer Events + setPointerCapture（同 fab，防 iframe 吞 up 导致窗口永久跟随鼠标）
     const topbar = $('#arx-topbar');
-    let _winArmed = false, _winMoving = false, _wmx = 0, _wmy = 0, _winMovedAt = 0;
-    topbar.addEventListener('mousedown', e => {
-        if (e.button !== 0) return;
+    let _winArmed = false, _winMoving = false, _wmx = 0, _wmy = 0, _winMovedAt = 0, _winPid = null;
+    topbar.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         if (e.target.closest('#arx-closebtn, button, input, select')) return;
+        if (pdoc.documentElement.clientWidth <= 786) return; // 手机端全屏锁定，无拖动
         _winArmed = true; _winMoving = false;
         _wmx = e.clientX; _wmy = e.clientY;
+        _winPid = e.pointerId;
+        try { topbar.setPointerCapture(e.pointerId); } catch (err) {}
     });
-    pdoc.addEventListener('mousemove', e => {
-        if (!_winArmed) return;
+    topbar.addEventListener('pointermove', e => {
+        if (!_winArmed || e.pointerId !== _winPid) return;
         const dx = e.clientX - _wmx, dy = e.clientY - _wmy;
         if (!_winMoving) {
             if (Math.abs(dx) + Math.abs(dy) < 6) return;
@@ -829,41 +873,16 @@ ${cardsB.join('\n\n')}
         _wmx = e.clientX; _wmy = e.clientY;
         e.preventDefault();
     });
-    pdoc.addEventListener('mouseup', () => {
+    function winDragEnd(e) {
+        if (!_winArmed) return;
+        if (e && e.pointerId != null && e.pointerId !== _winPid) return;
         if (_winArmed && _winMoving) _winMovedAt = Date.now();
-        _winArmed = false; _winMoving = false;
-    });
-    topbar.addEventListener('touchstart', e => {
-        if (pdoc.documentElement.clientWidth <= 786) return;
-        if (e.touches.length !== 1) return;
-        if (e.target.closest('#arx-closebtn, button, input, select')) return;
-        const t = e.touches[0];
-        _winArmed = true; _winMoving = false;
-        _wmx = t.clientX; _wmy = t.clientY;
-    }, { passive: true });
-    pdoc.addEventListener('touchmove', e => {
-        if (!_winArmed || e.touches.length !== 1) return;
-        const t = e.touches[0];
-        const dx = t.clientX - _wmx, dy = t.clientY - _wmy;
-        if (!_winMoving) {
-            if (Math.abs(dx) + Math.abs(dy) < 6) return;
-            _winMoving = true;
-            const r0 = ov.getBoundingClientRect();
-            ov.style.left = r0.left + 'px'; ov.style.top = r0.top + 'px';
-            ov.style.transform = 'none';
-            ov.classList.add('dragging');
-        }
-        const r = ov.getBoundingClientRect();
-        const vw = pdoc.documentElement.clientWidth, vh = pdoc.documentElement.clientHeight;
-        ov.style.left = Math.min(vw - 180, Math.max(180 - r.width, r.left + dx)) + 'px';
-        ov.style.top = Math.min(vh - 50, Math.max(0, r.top + dy)) + 'px';
-        _wmx = t.clientX; _wmy = t.clientY;
-        e.preventDefault();
-    }, { passive: false });
-    pdoc.addEventListener('touchend', () => {
-        if (_winArmed && _winMoving) _winMovedAt = Date.now();
-        _winArmed = false; _winMoving = false;
-    });
+        _winArmed = false; _winMoving = false; _winPid = null;
+        try { if (e && e.pointerId != null) topbar.releasePointerCapture(e.pointerId); } catch (err) {}
+    }
+    topbar.addEventListener('pointerup', winDragEnd);
+    topbar.addEventListener('pointercancel', winDragEnd);
+    pdoc.addEventListener('pointerup', winDragEnd);
 
     /* ================== 接线 & 初始化 ================== */
     $('#arx-closebtn').addEventListener('click', () => toggle(false));
