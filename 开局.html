@@ -12170,6 +12170,8 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
             $('#enable-meimei-dlc').on('change', function () { toggleMeimeiDLC(this.checked); });
             $('#enable-dayan-dlc').on('change', function () { toggleDayanDLC(this.checked); });
             $('#enable-apocalypse-dlc').on('change', function () { toggleApocalypseDLC(this.checked); });
+            // 初始状态强制同步：未开启 DLC 时把 IF线地点分组从 DOM 移除（手机端原生选择器不遵守 display:none）
+            if (!$('#enable-apocalypse-dlc').prop('checked')) toggleApocalypseLocations(false);
             $('#include-quest').on('change', function () { toggleMainQuestEntry(this.checked); });
             // 四传奇觉醒开关状态初始化（Mvu 可能稍后加载，自动重试）
             (function refreshLegendBtn() {
@@ -12985,35 +12987,75 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
         window.toggleApocalypseDLC = toggleApocalypseDLC;
 
         function toggleApocalypseLocations(show) {
-            // 切换终焉纪元·火种据点 optgroup
-            var fireGroup = document.getElementById('apocalypse-locations-fire');
-            if (fireGroup) fireGroup.style.display = show ? '' : 'none';
-            // 切换终焉纪元·教廷辖区 optgroup
-            var churchGroup = document.getElementById('apocalypse-locations-church');
-            if (churchGroup) churchGroup.style.display = show ? '' : 'none';
-            // 切换所有普通地点 optgroup（隐藏/显示）
             var locSel = document.getElementById('cc-location');
             if (!locSel) return;
-            var allGroups = locSel.querySelectorAll('optgroup');
-            for (var i = 0; i < allGroups.length; i++) {
-                var g = allGroups[i];
-                if (g.id === 'apocalypse-locations-fire' || g.id === 'apocalypse-locations-church') continue;
-                g.style.display = show ? 'none' : '';
+            // getElementById 找不到已脱离 DOM 的节点，分组元素需缓存复用；
+            // 缓存顺序为 [教廷辖区, 火种据点]，即插回时的正确先后顺序（fire 的锚点是 church）
+            if (!window.__apocLocGroups) {
+                var _fg = document.getElementById('apocalypse-locations-fire');
+                var _cg = document.getElementById('apocalypse-locations-church');
+                if (_fg && _cg) window.__apocLocGroups = [_cg, _fg];
             }
-            // 如果当前选中的是普通地点（非IF线地点），重置为空
+            var apocGroups = window.__apocLocGroups || [];
+            // 手机端浏览器的原生 select 选择器不遵守 optgroup 的 display:none（动态隐藏后仍会出现在选择列表），
+            // 因此必须直接从 DOM 移除/插回节点，才能保证任何端都严格按 DLC 开关显示。
+            if (!window.__apocLocStore) window.__apocLocStore = [];
             if (show) {
-                var curVal = locSel.value;
-                var apocFireOptions = fireGroup ? fireGroup.querySelectorAll('option') : [];
-                var apocChurchOptions = churchGroup ? churchGroup.querySelectorAll('option') : [];
-                var isApocLoc = false;
-                [apocFireOptions, apocChurchOptions].forEach(function(opts) {
-                    for (var j = 0; j < opts.length; j++) {
-                        if (opts[j].value === curVal) { isApocLoc = true; break; }
+                // 按缓存顺序插回 IF线分组（先教廷辖区后火种据点，锚点依次生效）
+                apocGroups.forEach(function (g) {
+                    if (!g.parentNode) {
+                        var anchor = g.__apocAnchor;
+                        if (anchor && anchor.parentNode === locSel) locSel.insertBefore(g, anchor);
+                        else locSel.appendChild(g);
                     }
+                    g.style.display = '';
                 });
-                if (!isApocLoc && curVal) {
-                    locSel.value = '';
+                // IF线模式下普通地点不可选：从 DOM 移除全部普通分组
+                var allGroups = Array.prototype.slice.call(locSel.querySelectorAll('optgroup'));
+                allGroups.forEach(function (g) {
+                    if (g.id === 'apocalypse-locations-fire' || g.id === 'apocalypse-locations-church') return;
+                    if (g.parentNode) {
+                        g.__apocAnchor = g.nextSibling;
+                        locSel.removeChild(g);
+                        window.__apocLocStore.push(g);
+                    }
+                    g.style.display = 'none';
+                });
+                // 如果当前选中的是普通地点（非IF线地点），重置为空
+                var apocValues = {};
+                apocGroups.forEach(function (g) {
+                    var opts = g.querySelectorAll('option');
+                    for (var j = 0; j < opts.length; j++) apocValues[opts[j].value] = true;
+                });
+                if (locSel.value && !apocValues[locSel.value]) locSel.value = '';
+            } else {
+                // 从 DOM 移除 IF线分组（手机端「未开启却可见」问题的根治点）
+                var valBefore = locSel.value;
+                apocGroups.forEach(function (g) {
+                    if (g.parentNode) {
+                        g.__apocAnchor = g.nextSibling;
+                        locSel.removeChild(g);
+                    }
+                    g.style.display = 'none';
+                });
+                // 若此前选中了 IF线地点，清空选择（移除节点后浏览器会自动跳到第一个普通地点，需复位到占位符）
+                var apocWasSelected = false;
+                apocGroups.forEach(function (g) {
+                    var opts = g.querySelectorAll('option');
+                    for (var j = 0; j < opts.length; j++) { if (opts[j].value === valBefore) apocWasSelected = true; }
+                });
+                if (valBefore && apocWasSelected) locSel.value = '';
+                // 恢复全部普通地点分组：倒序插回（锚点此时必然已挂载），保证原始顺序
+                for (var ri = window.__apocLocStore.length - 1; ri >= 0; ri--) {
+                    var rg = window.__apocLocStore[ri];
+                    if (!rg.parentNode) {
+                        var anchor2 = rg.__apocAnchor;
+                        if (anchor2 && anchor2.parentNode === locSel) locSel.insertBefore(rg, anchor2);
+                        else locSel.appendChild(rg);
+                    }
+                    rg.style.display = '';
                 }
+                window.__apocLocStore = [];
             }
         }
 
