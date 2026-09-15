@@ -234,6 +234,12 @@
   #isx-overlay .pt.capital .lbl{ font-size:10px; top:27px; }
   #isx-zoomctl button{ width:34px; height:34px; }
   #isx-hint{ font-size:10px; }
+  /* 名牌全量隐藏：9张名牌在350px地图上必然堆叠遮挡；改为按住势力临时显示 */
+  #isx-overlay .hot .nametag{ display:none; }
+  #isx-overlay .hot:active .nametag{ display:block; }
+  #isx-overlay .hot:active .fill{ opacity:.45 !important; border-style: solid !important; }
+  #isx-overlay .hot .nametag b{ font-size:12px; }
+  #isx-overlay .hot .nametag span{ font-size:9.5px; }
 }
 `;
 
@@ -657,6 +663,8 @@ function showTip(e,p,belong){
   const rect=tip.getBoundingClientRect();
   if(x+rect.width>win.innerWidth-10) x=e.clientX-rect.width-14;
   if(y+rect.height>win.innerHeight-10) y=e.clientY-rect.height-14;
+  if(x<10) x=10;
+  if(y<10) y=10;
   tip.style.left=x+'px'; tip.style.top=y+'px';
 }
 function hideTip(){tip.classList.remove('show');}
