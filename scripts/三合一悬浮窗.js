@@ -431,12 +431,16 @@ function __yzPromptChat(payload) {
 
     // ---- 注入：CHAT_COMPLETION_PROMPT_READY（总开关 + 新鲜度闸门）----
     try {
-        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, function (payload) {
+        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, async function (payload) {
             try {
                 const chat = __yzPromptChat(payload);
                 if (!chat) return;
                 const c = window.__iseriaDbCfg ? window.__iseriaDbCfg() : { enabled: false };
                 if (!c.enabled) return;                                        // 修复：注入此前不看总开关
+                if (window.__isuriaDbPending) {
+                    try { await Promise.race([window.__isuriaDbPending, new Promise(function (r) { setTimeout(r, 90000); })]); } catch (e) {}
+                    window.__isuriaDbPending = null;
+                }
                 for (const m of chat) {
                     if (m && m.role === 'system' && String(m.content || '').includes(_sentinel)) return;
                 }
@@ -455,33 +459,33 @@ function __yzPromptChat(payload) {
                 const floor = Number(message);
                 if (!(floor >= 0)) return;
                 _rememberLastUser(floor);                                      // 无论开关与否都记录（新鲜度基准）
-                // v3.2：分析不再在发送瞬间发起——独立 LLM 调用会与主生成并发抢 API，
-                // 代理并发限制会把主回复流掐断在半句话（表现为「开数据库就截断」）。
-                // 改为回复完成后分析上一条用户消息（零并发）。
+                // v3.5：生成前前置分析——发送瞬间立即分析，生成在 PROMPT_READY 处等待分析完成
+                // （串行化后不再有 v3.2 的并发抢 API 截断问题），AI 当楼即可读到本人输出的解析。
+                if (_cfgAI()) {
+                    const _gm = (typeof getChatMessages === 'function' ? getChatMessages(floor) : null) || [];
+                    const _mm = (Array.isArray(_gm) ? _gm : [_gm])[0] || {};
+                    const _tx = String(_mm.message != null ? _mm.message : (_mm.mes || ''));
+                    if (_tx && _tx.length >= 3 && !_isInterfaceFloor(_tx)) {
+                        _enqueue(floor, _tx);
+                        window.__isuriaDbPending = new Promise(function (resolve) {
+                            var waited = 0;
+                            var iv = setInterval(function () {
+                                waited += 1000;
+                                var done = false;
+                                try {
+                                    var s = JSON.parse(localStorage.getItem('iseria_db_outputs') || 'null');
+                                    if (s && Number(s.floor) >= floor) done = true;
+                                } catch (e) {}
+                                if (done || waited >= 90000) { clearInterval(iv); resolve(done); }
+                            }, 1000);
+                        });
+                    }
+                }
             } catch (e) {}
         });
     } catch (e) {}
 
-    // ---- 监听回复完成 → 分析其对应的上一条用户消息（零并发） ----
-    try {
-        eventOn(tavern_events.MESSAGE_RECEIVED, function (id) {
-            try {
-                if (!_cfgAI()) return;
-                const replyFloor = Number(id);
-                if (!(replyFloor >= 1)) return;
-                let userFloor = -1, text = '';
-                for (let f = replyFloor - 1; f >= 0; f--) {
-                    const arr = (typeof getChatMessages === 'function' ? getChatMessages(f) : null) || [];
-                    const m = (Array.isArray(arr) ? arr : [arr])[0];
-                    if (m && m.is_user) { userFloor = f; text = String(m.message != null ? m.message : (m.mes || '')); break; }
-                }
-                if (userFloor < 0 || !text || text.length < 3) return;
-                if (_isInterfaceFloor(text)) return;
-                // 延迟数秒：避开回复结束瞬间总结助手/规划大师等自动化任务的 LLM 调用窗口
-                setTimeout(function () { _enqueue(userFloor, text); }, 3000);
-            } catch (e) {}
-        });
-    } catch (e) {}
+    // ---- 回复后分析已移至发送瞬间（v3.5 生成前前置分析），此处不再重复触发 ----
 
     // ---- 兜底扫描：iframe 会随聊天更新重启，RECEIVED 事件可能被错过——
     //      启动后 8 秒 + 每 60 秒自动核对最后用户楼，缺分析就补（配 custom_api 独立通道，不占主生成配额）----
