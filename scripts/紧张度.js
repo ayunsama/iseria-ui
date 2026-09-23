@@ -329,6 +329,20 @@
       let expect = flags.紧张度基线 + worldDelta + contDelta + regDelta;
       expect = Math.max(0, Math.min(100, Math.round(expect)));
 
+      // ── 终局阶强制决战期：魔王分身按事件轴抵达终局阶（≥圣光历1500年1月）时，紧张度保底 85。
+      //    分层封顶（世界+25/大陆+35）是为防中小新闻乱推全球紧张度，但终局剧本推进必须有决战烈度，
+      //    否则会出现"决战气氛浓烈/空间通道开启，紧张度却停在动荡期"的自相矛盾（IF线压迫指数不适用本联动）。
+      if (!ifLine) {
+        const _tdm = String(world.日期 || '').match(/圣光历(\d+)年(?:\s*(\d+)月)?/);
+        if (_tdm) {
+          const _ty = parseInt(_tdm[1], 10), _tmo = _tdm[2] ? parseInt(_tdm[2], 10) : 1;
+          if (_ty * 12 + _tmo >= 1500 * 12 + 1 && expect < 85) {
+            expect = 85;
+            console.log('[紧张度] 终局阶联动：魔王分身已抵终局阶，紧张度保底 85（决战期）');
+          }
+        }
+      }
+
       const oldVal = tension.当前值;
       if (oldVal !== expect) {
         tension.当前值 = expect;
