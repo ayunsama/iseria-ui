@@ -1293,6 +1293,14 @@ div[style*="dashed"] > div:first-child { color: #6b2e2e !important; letter-spaci
                             <span class="open-badge">开场白 ⑧</span>
                             <div class="open-status">✓ 已选择</div>
                         </button>
+
+                        <button class="jrpg-opening-btn" onclick="applyOpeningPreset(9)" id="open-btn-9">
+                            <span class="open-icon">👑</span>
+                            <div class="open-name">主线开局 · 异界者的第一滴血</div>
+                            <div class="open-desc">世界书正史开局。一辆面包车把现代的你撞进了伊瑟利亚——本源意志的投放，阿尔比恩边境石桥镇的后巷。手无寸铁、没有职业，序章「异界者的第一滴血与职业试炼」由此开始。</div>
+                            <span class="open-badge">开场白 ⑨</span>
+                            <div class="open-status">✓ 已选择</div>
+                        </button>
                     </div>
                 </div>
                 <div class="jrpg-grid-3">
@@ -4588,7 +4596,7 @@ function izYearStr() { return '圣光历' + izStartYear() + '年'; }
 
 function applyOpeningPreset(index) {
     // 清除所有按钮的active状态
-    for (var i = 1; i <= 8; i++) {
+    for (var i = 1; i <= 9; i++) {
         var btn = document.getElementById('open-btn-' + i);
         if (btn) btn.classList.remove('active');
     }
@@ -4623,6 +4631,9 @@ function applyOpeningPreset(index) {
             break;
         case 8: // 开场白8：最后的勇者
             applyLastHopePreset();
+            break;
+        case 9: // 开场白9：主线开局·异界者的第一滴血
+            applyMainlinePreset();
             break;
     }
 
@@ -4891,6 +4902,86 @@ function applyGroupReincarnationPreset() {
 
 // ============================================================
 //  🗝️ 裂隙门钥开局（梅萨利亚港的拾遗者）
+// ============================================================
+//  👑 主线开局（开场白9）：异界者的第一滴血与职业试炼
+//     世界书正史口径——本源意志投放石桥镇后巷，无职业、无装备，主线自序章开始
+// ============================================================
+function applyMainlinePreset() {
+    // 1. 种族为人类（异世界穿越者）
+    var raceSel = document.getElementById('cc-race');
+    raceSel.value = '人类';
+    raceSel.classList.remove('jrpg-locked-select');
+    document.getElementById('race-lock-badge').style.display = 'none';
+    updateRaceBonus();
+
+    // 2. 等级为1
+    var levelInput = document.getElementById('cc-level');
+    levelInput.value = 1;
+    levelInput.classList.remove('jrpg-locked');
+    document.getElementById('level-lock-badge').style.display = 'none';
+    onLevelChange();
+
+    // 3. 职业为无职业（须通过职业试炼获得）
+    var classSel = document.getElementById('cc-class');
+    classSel.value = '无职业';
+    classSel.classList.remove('jrpg-locked-select');
+    document.getElementById('class-lock-badge').style.display = 'none';
+
+    // 4. 信仰为无信仰
+    var faithSel = document.getElementById('cc-faith');
+    if (faithSel) faithSel.value = '无信仰';
+
+    // 5. 加护：死亡回溯（本源意志的馈赠）
+    var blessSel = document.getElementById('cc-blessing-type');
+    blessSel.value = '死亡回溯';
+    blessSel.classList.remove('jrpg-locked-select');
+    document.getElementById('bless-lock-badge').style.display = 'none';
+    updateBlessingDetail();
+
+    // 6. 清空自定义特质（保持序章"一无所有"口径）
+    var customTrait = document.getElementById('cc-custom-trait');
+    customTrait.value = '';
+
+    // 7. 年龄20
+    var ageInput = document.getElementById('cc-age');
+    if (ageInput) ageInput.value = 20;
+
+    // 8. 属性默认（力10 敏10 体11 智11 感11 魅10），留2点自由分配
+    var mainAttrs = { str: 10, dex: 10, con: 11, int: 11, wis: 11, cha: 10 };
+    for (var ma in mainAttrs) {
+        baseAttrs[ma] = mainAttrs[ma];
+        document.getElementById('base-' + ma).innerText = mainAttrs[ma];
+    }
+    ccPoints = 2;
+    document.getElementById('cc-points').innerText = '2';
+
+    // 9. 降临地点：石桥镇
+    var locSel = document.getElementById('cc-location');
+    locSel.value = '阿尔比恩王国·石桥镇';
+    locSel.classList.remove('jrpg-locked-select');
+    document.getElementById('loc-lock-badge').style.display = 'none';
+
+    // 10. 时期：暗流期（圣光历1497年，变革纪开端）
+    var eraSel = document.getElementById('cc-era');
+    eraSel.value = '暗流期';
+    updateEraDetail();
+
+    // 11. 主线条目启用
+    var questCheck = document.getElementById('include-quest');
+    if (questCheck) questCheck.checked = true;
+    if (typeof toggleMainQuestEntry === 'function') toggleMainQuestEntry(true);
+
+    // 12. 身份背景（世界书序章口径）
+    var identityText = document.getElementById('cc-identity');
+    if (identityText) identityText.value = '异世界穿越者。被本源意志投放至阿尔比恩王国边境的石桥镇，手无寸铁、没有任何职业基础，唯一拥有的是无缝理解通用语的加护。主线任务：序章「异界者的第一滴血与职业试炼」→ 第一章「第一桶金与染血的委托」→ 王选与大转移 → 直面魔王降世的终局。';
+
+    calcStats();
+    updateSpDisplay();
+
+    alert('👑 主线开局「异界者的第一滴血与职业试炼」已激活！\n本源意志将你投放至阿尔比恩王国边境的石桥镇——手无寸铁、没有职业，只有理解通用语的加护。\n位置：石桥镇 ｜ 时期：暗流期（圣光历1497年）｜ 主线条目：已启用。\n主线由此展开：职业试炼 → 第一桶金 → 王选与大转移 → 魔王降世的终局。');
+}
+
+
 // ============================================================
 function applyRiftGatePreset() {
     // 1. 种族为人类
