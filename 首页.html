@@ -1277,8 +1277,8 @@ div[style*="dashed"] > div:first-child { color: #6b2e2e !important; letter-spaci
 
                         <button class="jrpg-opening-btn" onclick="applyOpeningPreset(9)" id="open-btn-9">
                             <span class="open-icon">👑</span>
-                            <div class="open-name">主线开局 · 王座悬空</div>
-                            <div class="open-desc">直接从主线中心开始。圣光历1497年3月，爱德华国王驾崩，王选漩涡撕开王国。持照冒险者抵达王都坎特伯里，主线任务即刻展开。</div>
+                            <div class="open-name">主线开局 · 异界者的第一滴血</div>
+                            <div class="open-desc">世界书正史开局。本源意志将你投放至阿尔比恩边境石桥镇的后巷——手无寸铁、没有职业，仅有无缝理解通用语的加护。从生存危机到职业试炼，主线由此展开。</div>
                             <span class="open-badge">开场白 ⑨</span>
                             <div class="open-status">✓ 已选择</div>
                         </button>
@@ -4656,35 +4656,77 @@ function applyOpeningPreset(index) {
 // ============================================================
 //  👑 主线开局（开场白9）：王座悬空 · 王选漩涡
 // ============================================================
+//  👑 主线开局（开场白9）：异界者的第一滴血与职业试炼
+//     世界书正史口径——本源意志投放石桥镇后巷，无职业、无装备，主线自序章开始
+// ============================================================
 function applyMainlinePreset() {
-    // 时期：动荡期（1497年3月后王选漩涡）
-    var eraSel = document.getElementById('cc-era');
-    eraSel.value = '动荡期';
-    updateEraDetail();
+    // 种族锁定：人类（异世界穿越者）
+    var raceSel = document.getElementById('cc-race');
+    raceSel.value = '人类';
+    raceSel.classList.add('jrpg-locked-select');
+    document.getElementById('race-lock-badge').style.display = 'inline-block';
+    updateRaceBonus();
 
-    // 降临地点：王都坎特伯里
-    var locSel = document.getElementById('cc-location');
-    locSel.value = '阿尔比恩王国·坎特伯里';
-
-    // 等级1（不锁定，主线开局允许自定义）
+    // 等级锁定 1
     var levelInput = document.getElementById('cc-level');
     levelInput.value = 1;
+    levelInput.classList.add('jrpg-locked');
+    document.getElementById('level-lock-badge').style.display = 'inline-block';
     onLevelChange();
 
-    // 主线任务条目开启
+    // 加护锁定：死亡回溯（本源意志的馈赠）
+    var blessSel = document.getElementById('cc-blessing-type');
+    blessSel.value = '死亡回溯';
+    blessSel.classList.add('jrpg-locked-select');
+    document.getElementById('bless-lock-badge').style.display = 'inline-block';
+    updateBlessingDetail();
+
+    // 自定义特质：清空（本开局不给额外命格，保持序章"一无所有"口径）
+    var customTrait = document.getElementById('cc-custom-trait');
+    customTrait.value = '';
+
+    // 身份文案（世界书序章口径）
+    var identityText = document.getElementById('cc-identity');
+    identityText.value = '异世界穿越者。被本源意志投放至阿尔比恩王国边境的石桥镇后巷，手无寸铁、没有任何职业基础，唯一拥有的是无缝理解通用语的加护。主线任务：序章「异界者的第一滴血与职业试炼」→ 第一章「第一桶金与染血的委托」→ 王选与大转移 → 直面魔王降世的终局。';
+    identityText.classList.add('jrpg-locked');
+
+    // 降临地点锁定：石桥镇
+    var locSel = document.getElementById('cc-location');
+    locSel.value = '阿尔比恩王国·石桥镇';
+    locSel.classList.add('jrpg-locked-select');
+    document.getElementById('loc-lock-badge').style.display = 'inline-block';
+
+    // 身份预设：复位
+    var presetSel = document.getElementById('cc-identity-preset');
+    presetSel.value = '';
+    presetSel.classList.add('jrpg-locked-select');
+
+    // 职业锁定：无职业（须通过职业试炼获得）
+    var classSel = document.getElementById('cc-class');
+    classSel.value = '无职业';
+    classSel.classList.add('jrpg-locked-select');
+    document.getElementById('class-lock-badge').style.display = 'inline-block';
+    document.getElementById('cc-subclass1').classList.add('jrpg-locked-select');
+    document.getElementById('cc-subclass2').classList.add('jrpg-locked-select');
+    document.getElementById('job-allocator-box').style.display = 'none';
+    document.getElementById('skill-tree').innerHTML = '<div style="text-align:center; color:#aaa; margin-top:10px;">无职业者没有技能树</div>';
+
+    // 时期：暗流期（圣光历1497年，变革纪开端）
+    var eraSel = document.getElementById('cc-era');
+    eraSel.value = '暗流期';
+    updateEraDetail();
+
+    // 主线条目启用
     var questCheck = document.getElementById('include-quest');
     if (questCheck) questCheck.checked = true;
     if (typeof toggleMainQuestEntry === 'function') toggleMainQuestEntry(true);
 
-    // 身份文案
-    var identityText = document.getElementById('cc-identity');
-    if (identityText) identityText.value = '持照冒险者。圣光历1497年3月抵达王都坎特伯里，恰逢爱德华国王驾崩、王选漩涡开启——主线任务由此展开。';
-
     calcStats();
     updateSpDisplay();
 
-    alert('👑 主线开局「王座悬空」已激活！\n圣光历1497年3月，爱德华国王驾崩，四王储的王选漩涡撕开王国，帝国的军队在边境待命。\n位置：坎特伯里·王都 ｜ 时期：动荡期 ｜ 主线条目：已启用。\n你的主线由此展开：王选、大转移与魔王降世的终局。');
+    alert('👑 主线开局「异界者的第一滴血与职业试炼」已激活！\n本源意志将你投放至阿尔比恩王国边境的石桥镇后巷——手无寸铁、没有职业，唯一拥有的是理解通用语的加护。\n位置：石桥镇 ｜ 时期：暗流期（圣光历1497年）｜ 主线条目：已启用。\n主线由此展开：职业试炼 → 第一桶金 → 王选与大转移 → 魔王降世的终局。');
 }
+
 
 // ============================================================
 //  👶 从零转生开局（开场白1）
