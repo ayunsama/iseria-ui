@@ -140,6 +140,15 @@
     if (s === '世界' || s === '区域' || s === '局部') return s;
     return '大陆';
   }
+  // ── 世界级关键词兜底：魔王/魔潮/灾兽/空间通道/联军决战等魔族攻势事件，无论 AI 标注什么都按
+  //    世界级结算——AI 惯性把决战期大事件标成"大陆级"（默认），导致紧张度被大陆封顶(+35)卡死，
+  //    出现"空间通道开启却动荡期"的脱节。局部豁免（玩家小队级战斗），IF线压迫指数语义不同不适用。
+  const WORLD_SCOPE_RE = /魔王|奥姆尼斯|魔潮|灾兽|空间通道|魔族军团|人类联军|讨伐魔王|决战/;
+  function promoteScope(title, content, scope, ifLine) {
+    if (ifLine || scope === '局部' || scope === '世界') return scope;
+    const text = String(title || '') + ' ' + String(content || '');
+    return WORLD_SCOPE_RE.test(text) ? '世界' : scope;
+  }
   // 已结算记录取值（兼容旧档：数字 → 视为 {v:数, s:'大陆'}）
   function settledValue(rec) {
     return (typeof rec === 'number') ? rec : (rec && typeof rec.v === 'number' ? rec.v : 0);
@@ -276,7 +285,7 @@
         }
         if (Object.prototype.hasOwnProperty.call(settled, title)) continue;
         if (flags.紧张度已落幕 && flags.紧张度已落幕[title]) continue; // 自动落幕的新闻不再复活
-        const scope = normalizeScope(news.影响范围);
+        const scope = promoteScope(title, news.内容, normalizeScope(news.影响范围), ifLine);
         const impact = computeNewsImpact(title, news.内容, news.重要性, scope, ifLine);
         let _f = 0;
         try { _f = Math.max(0, getLastMessageId()); } catch (_e) {}
