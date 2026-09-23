@@ -1241,8 +1241,8 @@ div[style*="dashed"] > div:first-child { color: #6b2e2e !important; letter-spaci
                         </button>
                         <button class="jrpg-opening-btn" onclick="applyOpeningPreset(3)" id="open-btn-3">
                             <span class="open-icon">🌌</span>
-                            <div class="open-name">异世界穿越</div>
-                            <div class="open-desc">一瞬间从便利店穿越到异世界街巷。身上只有一套现代衣物和一袋便利店商品，被混混围堵在陌生的城邦中。</div>
+                            <div class="open-name">异世界穿越 · 强开局</div>
+                            <div class="open-desc">强开局。从便利店穿越到异世界，携「死亡回溯」+「变局命格」双重加护。主线：自边境卷入王选与大转移，逐步走向魔王降世的终局。</div>
                             <span class="open-badge">开场白 ③</span>
                             <div class="open-status">✓ 已选择</div>
                         </button>
@@ -1272,6 +1272,14 @@ div[style*="dashed"] > div:first-child { color: #6b2e2e !important; letter-spaci
                             <div class="open-name">翼民骑士</div>
                             <div class="open-desc">艾洛菲拉第三中队的翼民骑士，受命深入崩落带调查异常。追踪流向地脉锚点的活性黑泥，在异变体触锚的那一刻，于炸毁锚点、撤退回报与深入裂缝之间做出抉择。</div>
                             <span class="open-badge">开场白 ⑦</span>
+                            <div class="open-status">✓ 已选择</div>
+                        </button>
+
+                        <button class="jrpg-opening-btn" onclick="applyOpeningPreset(9)" id="open-btn-9">
+                            <span class="open-icon">👑</span>
+                            <div class="open-name">主线开局 · 王座悬空</div>
+                            <div class="open-desc">直接从主线中心开始。圣光历1497年3月，爱德华国王驾崩，王选漩涡撕开王国。持照冒险者抵达王都坎特伯里，主线任务即刻展开。</div>
+                            <span class="open-badge">开场白 ⑨</span>
                             <div class="open-status">✓ 已选择</div>
                         </button>
                     </div>
@@ -4077,7 +4085,7 @@ window.toggleMeimeiDLC=toggleMeimeiDLC;window.toggleDayanDLC=toggleDayanDLC;wind
             customTrait.classList.add('jrpg-locked');
 
             var identityText = document.getElementById('cc-identity');
-            identityText.value = '异世界穿越者。被本源意志强行投放到阿尔比恩王国，没有任何身份与记忆，一切从零开始。';
+            identityText.value = '异世界穿越者（强开局）。被本源意志选中的命运变数，携「死亡回溯」与「变局命格」降临阿尔比恩王国。主线任务：自边境卷入王选漩涡与大转移事件，直至直面魔王降世的终局。';
             identityText.classList.add('jrpg-locked');
 
             var locSel = document.getElementById('cc-location');
@@ -4139,7 +4147,7 @@ window.toggleMeimeiDLC=toggleMeimeiDLC;window.toggleDayanDLC=toggleDayanDLC;wind
                 }
             })();
 
-            alert('🌌 异世界穿越的变局已激活！种族锁定为人类，等级锁定为1，职业锁定为无职业，加护锁定为「死亡回溯」+「变局命格」，降临地点锁定为阿尔比恩王国边境。\n你将以一无所有的异界者身份开始冒险。');
+            alert('🌌 异世界穿越的变局已激活（强开局）！种族锁定为人类，等级锁定为1，职业锁定为无职业，加护锁定为「死亡回溯」+「变局命格」，降临地点锁定为阿尔比恩王国边境。\n主线任务：自边境卷入王选漩涡与大转移事件，直至直面魔王降世的终局。');
         }
 // ============================================================
 //  清除所有锁定状态（用于切换预设时重置）
@@ -4584,7 +4592,7 @@ function applyDemonPreset() {
 // ============================================================
 function applyOpeningPreset(index) {
     // 清除所有按钮的active状态
-    for (var i = 1; i <= 7; i++) {
+    for (var i = 1; i <= 9; i++) {
         var btn = document.getElementById('open-btn-' + i);
         if (btn) btn.classList.remove('active');
     }
@@ -4617,6 +4625,9 @@ function applyOpeningPreset(index) {
         case 7: // 开场白7：翼民骑士·地脉锚点
             applyWingKnightPreset();
             break;
+        case 9: // 开场白9：主线开局·王座悬空
+            applyMainlinePreset();
+            break;
     }
 
 
@@ -4640,6 +4651,39 @@ function applyOpeningPreset(index) {
     } catch (e) {
         console.warn('⚠️ 跳转第零楼swipe页时出错:', e);
     }
+}
+
+// ============================================================
+//  👑 主线开局（开场白9）：王座悬空 · 王选漩涡
+// ============================================================
+function applyMainlinePreset() {
+    // 时期：动荡期（1497年3月后王选漩涡）
+    var eraSel = document.getElementById('cc-era');
+    eraSel.value = '动荡期';
+    updateEraDetail();
+
+    // 降临地点：王都坎特伯里
+    var locSel = document.getElementById('cc-location');
+    locSel.value = '阿尔比恩王国·坎特伯里';
+
+    // 等级1（不锁定，主线开局允许自定义）
+    var levelInput = document.getElementById('cc-level');
+    levelInput.value = 1;
+    onLevelChange();
+
+    // 主线任务条目开启
+    var questCheck = document.getElementById('include-quest');
+    if (questCheck) questCheck.checked = true;
+    if (typeof toggleMainQuestEntry === 'function') toggleMainQuestEntry(true);
+
+    // 身份文案
+    var identityText = document.getElementById('cc-identity');
+    if (identityText) identityText.value = '持照冒险者。圣光历1497年3月抵达王都坎特伯里，恰逢爱德华国王驾崩、王选漩涡开启——主线任务由此展开。';
+
+    calcStats();
+    updateSpDisplay();
+
+    alert('👑 主线开局「王座悬空」已激活！\n圣光历1497年3月，爱德华国王驾崩，四王储的王选漩涡撕开王国，帝国的军队在边境待命。\n位置：坎特伯里·王都 ｜ 时期：动荡期 ｜ 主线条目：已启用。\n你的主线由此展开：王选、大转移与魔王降世的终局。');
 }
 
 // ============================================================
