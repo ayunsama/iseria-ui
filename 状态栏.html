@@ -3481,6 +3481,7 @@ var TRT_TECH = {
                 }
                 bandSections.forEach(function(sec) {
                     var bandId = 'lvband-' + bandIdBase + '-' + sec.band.min;
+                    var open = (window.__isuriaFoldState && window.__isuriaFoldState['#' + bandId] !== undefined) ? window.__isuriaFoldState['#' + bandId] : sec.isCurrent;
                     html += '<div style="font-weight:bold;color:#5a4430;margin:8px 0 0;font-size:12px;background:rgba(139,107,74,0.1);border-radius:4px;padding:4px 8px;cursor:pointer;user-select:none;" data-fold-target="#' + bandId + '" title="点击折叠/展开">';
                     html += '📚 ' + sec.band.name + ' <span style="font-size:10px;color:#8b6b4a;font-weight:normal;">Lv.' + sec.band.min + (sec.band.max <= 20 ? '-' + sec.band.max : '+') + ' · ' + sec.count + ' 技能' + (sec.learnedCount ? ' · 已学 ' + sec.learnedCount : '') + '</span>' + (sec.isCurrent ? ' <span style="font-size:10px;color:#27ae60;font-weight:normal;">📍当前</span>' : '');
                     html += '<span class="jrpg-fold-arrow" style="float:right;color:#8b6b4a;">' + (sec.isCurrent ? '▾' : '▸') + '</span></div>';
@@ -3670,7 +3671,7 @@ var TRT_TECH = {
                     if (openIdx === -1 && vSections.length) openIdx = vSections.length - 1;
                     vSections.forEach(function(sec, si) {
                         var bandId = 'vband-' + vBandIdBase + '-' + sec.band.min;
-                        var open = si === openIdx;
+                        var open = (window.__isuriaFoldState && window.__isuriaFoldState['#' + bandId] !== undefined) ? window.__isuriaFoldState['#' + bandId] : (si === openIdx);
                         html += '<div style="font-weight:bold;color:#5a4430;margin:8px 0 0;font-size:12px;background:rgba(142,68,173,0.08);border-radius:4px;padding:4px 8px;cursor:pointer;user-select:none;" data-fold-target="#' + bandId + '" title="点击折叠/展开">';
                         html += '📚 ' + sec.band.name + ' <span style="font-size:10px;color:#8b6b4a;font-weight:normal;">Lv.' + sec.band.min + (sec.band.max <= 20 ? '-' + sec.band.max : '+') + ' · ' + sec.count + ' 技能' + (sec.learnedCount ? ' · 已学 ' + sec.learnedCount : '') + '</span>';
                         html += '<span class="jrpg-fold-arrow" style="float:right;color:#8b6b4a;">' + (open ? '▾' : '▸') + '</span></div>';
@@ -5154,42 +5155,76 @@ var TRT_TECH = {
                 });
             }
 
-            // 技能学习
-            html += '<div class="alloc-sec-title">🎓 技能学习（职业技能树 + 变体技能，消耗技能点）</div>';
+            // 技能学习（等级段模板分组，可折叠；默认展开当前可学技能所在段，折叠状态跨重渲染记忆）
+            html += '<div class="alloc-sec-title">🎓 技能学习（职业技能树 + 变体技能，消耗技能点；按等级段折叠）</div>';
             var learned = allocLearned(actor, target);
             var added = {};
             draft.skills.forEach(function(s) { added[s.job + '|' + s.name] = true; });
             var customTrees = _.get(stat, '$customSkillTrees', {});
-            var skillCount = 0;
-            var showSkillRow = function(sk, jobName, label) {
+            var skillRows = [];
+            var collectSkillRow = function(sk, jobName, label) {
                 var name = sk.n || sk.name || '';
                 if (!name) return;
-                var type = sk.type || (typeof skillTypeOf === 'function' ? skillTypeOf(sk, jobName) : '技能');
-                var cost = parseInt(sk.c, 10) || 1;
-                var lvl = parseInt(sk.lvl, 10) || 1;
-                var jobLv = parseInt((jobInfo[jobName] && jobInfo[jobName].等级) || 1, 10) || 1;
                 var key = jobName + '|' + name;
                 if (learned[name] || added[key]) return;
-                var isLocked = jobLv < lvl;
-                var spNotEnough = (totalSp - spUsed) < cost;
-                skillCount++;
-                html += '<div class="alloc-skill-item"><div><span class="sk-name">' + escapeAttr(name) + '</span><span class="alloc-skill-badge">' + type + '</span>' +
-                    '<div class="sk-meta">' + escapeAttr(jobName) + ' · 需' + lvl + '级 · 消耗' + cost + '点' + (label ? ' · ' + escapeAttr(label) : '') + '</div></div>';
-                if (isLocked) html += '<span style="font-size:10px;color:#e74c3c;flex-shrink:0;">🔒 需' + lvl + '级</span>';
-                else if (spNotEnough) html += '<span style="font-size:10px;color:#bbb;flex-shrink:0;">技能点不足</span>';
-                else html += '<button class="alloc-add-skill" data-alloc-skill-job="' + escapeAttr(jobName) + '" data-alloc-skill-name="' + escapeAttr(name) + '" data-alloc-skill-type="' + type + '" data-alloc-skill-cost="' + cost + '" data-alloc-skill-desc="' + escapeAttr(sk.d || '') + '" data-alloc-skill-mp="' + (parseInt(sk.mp, 10) || parseMpCost(sk.d) || 0) + '">+ 学习</button>';
-                html += '</div>';
+                skillRows.push({ sk: sk, jobName: jobName, label: label });
             };
             jobs.forEach(function(j) {
                 var jf = jobElemFilter(j);
                 var db = (typeof dbSkills !== 'undefined' && dbSkills[jf.base]) || [];
-                db.forEach(function(sk) { if (jobSkillAllowed(j, sk)) showSkillRow(sk, j, ''); });
+                db.forEach(function(sk) { if (jobSkillAllowed(j, sk)) collectSkillRow(sk, j, ''); });
                 var vMap = customTrees[j] || {};
                 Object.keys(vMap).forEach(function(vn) {
-                    (vMap[vn].skills || []).forEach(function(sk) { if (jobSkillAllowed(j, sk)) showSkillRow(sk, j, '变体·' + vn); });
+                    (vMap[vn].skills || []).forEach(function(sk) { if (jobSkillAllowed(j, sk)) collectSkillRow(sk, j, '变体·' + vn); });
                 });
             });
-            if (!skillCount) html += '<div class="alloc-empty">当前角色没有可学习的技能（可能已全部掌握，或职业等级/技能点不足）</div>';
+            if (!skillRows.length) {
+                html += '<div class="alloc-empty">当前角色没有可学习的技能（可能已全部掌握，或职业等级/技能点不足）</div>';
+            } else {
+                var ABANDS = [
+                    { min: 1, max: 4, name: '普通阶' },
+                    { min: 5, max: 8, name: '超凡阶' },
+                    { min: 9, max: 12, name: '精英阶' },
+                    { min: 13, max: 16, name: '史诗阶' },
+                    { min: 17, max: 20, name: '传说阶' },
+                    { min: 21, max: 999, name: '神话阶' }
+                ];
+                var allocBandBase = String(target).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+                var allocSkillCount = 0;
+                var renderAllocSkillRow = function(sk, jobName, label) {
+                    var name = sk.n || sk.name || '';
+                    var type = sk.type || (typeof skillTypeOf === 'function' ? skillTypeOf(sk, jobName) : '技能');
+                    var cost = parseInt(sk.c, 10) || 1;
+                    var lvl = parseInt(sk.lvl, 10) || 1;
+                    var jobLv = parseInt((jobInfo[jobName] && jobInfo[jobName].等级) || 1, 10) || 1;
+                    var isLocked = jobLv < lvl;
+                    var spNotEnough = (totalSp - spUsed) < cost;
+                    allocSkillCount++;
+                    html += '<div class="alloc-skill-item"><div><span class="sk-name">' + escapeAttr(name) + '</span><span class="alloc-skill-badge">' + type + '</span>' +
+                        '<div class="sk-meta">' + escapeAttr(jobName) + ' · 需' + lvl + '级 · 消耗' + cost + '点' + (label ? ' · ' + escapeAttr(label) : '') + '</div></div>';
+                    if (isLocked) html += '<span style="font-size:10px;color:#e74c3c;flex-shrink:0;">🔒 需' + lvl + '级</span>';
+                    else if (spNotEnough) html += '<span style="font-size:10px;color:#bbb;flex-shrink:0;">技能点不足</span>';
+                    else html += '<button class="alloc-add-skill" data-alloc-skill-job="' + escapeAttr(jobName) + '" data-alloc-skill-name="' + escapeAttr(name) + '" data-alloc-skill-type="' + type + '" data-alloc-skill-cost="' + cost + '" data-alloc-skill-desc="' + escapeAttr(sk.d || '') + '" data-alloc-skill-mp="' + (parseInt(sk.mp, 10) || parseMpCost(sk.d) || 0) + '">+ 学习</button>';
+                    html += '</div>';
+                };
+                ABANDS.forEach(function(band) {
+                    var rows = skillRows.filter(function(r) { var lv = parseInt(r.sk.lvl, 10) || 1; return lv >= band.min && lv <= band.max; });
+                    if (!rows.length) return;
+                    var unlockedCount = rows.filter(function(r) {
+                        var lv = parseInt(r.sk.lvl, 10) || 1;
+                        var jlv = parseInt((jobInfo[r.jobName] && jobInfo[r.jobName].等级) || 1, 10) || 1;
+                        return jlv >= lv;
+                    }).length;
+                    var bandId = 'alloc-skill-band-' + allocBandBase + '-' + band.min;
+                    var open = (window.__isuriaFoldState && window.__isuriaFoldState['#' + bandId] !== undefined) ? window.__isuriaFoldState['#' + bandId] : (unlockedCount > 0);
+                    html += '<div style="font-weight:bold;color:#5a4430;margin:8px 0 0;font-size:12px;background:rgba(139,107,74,0.1);border-radius:4px;padding:4px 8px;cursor:pointer;user-select:none;" data-fold-target="#' + bandId + '" title="点击折叠/展开">';
+                    html += '📚 ' + band.name + ' <span style="font-size:10px;color:#8b6b4a;font-weight:normal;">Lv.' + band.min + (band.max <= 20 ? '-' + band.max : '+') + ' · ' + rows.length + ' 技能' + (unlockedCount ? ' · 可学 ' + unlockedCount : '') + '</span>';
+                    html += '<span class="jrpg-fold-arrow" style="float:right;color:#8b6b4a;">' + (open ? '▾' : '▸') + '</span></div>';
+                    html += '<div id="' + bandId + '" style="display:' + (open ? '' : 'none') + ';">';
+                    rows.forEach(function(r) { renderAllocSkillRow(r.sk, r.jobName, r.label); });
+                    html += '</div>';
+                });
+            }
 
             // 草稿清单
             var hasAttr = Object.keys(draft.attr).some(function(k) { return draft.attr[k]; });
@@ -7565,12 +7600,17 @@ var TRT_TECH = {
                 $body.toggle();
                 $(this).find('.jrpg-skilltree-arrow').text($body.is(':visible') ? '▾' : '▸');
             });
-            // 通用折叠：带 data-fold-target 的标题（等级段分组/变体技能区等），data-fold-open-class 可选保持展开色
+            // 通用折叠：带 data-fold-target 的标题（等级段分组/变体技能区等），状态记入 window.__isuriaFoldState 供重渲染后还原
             $('.jrpg-status-wrapper').on('click', '[data-fold-target]', function() {
                 var $body = $($(this).data('fold-target'));
                 if (!$body.length) return;
                 $body.toggle();
-                $(this).find('.jrpg-skilltree-arrow, .jrpg-fold-arrow').text($body.is(':visible') ? '▾' : '▸');
+                var visible = $body.is(':visible');
+                $(this).find('.jrpg-skilltree-arrow, .jrpg-fold-arrow').text(visible ? '▾' : '▸');
+                try {
+                    window.__isuriaFoldState = window.__isuriaFoldState || {};
+                    window.__isuriaFoldState[String($(this).data('fold-target'))] = visible;
+                } catch (e) {}
             });
 
             // 自创职业：弹窗内生成定制技能树（读取玩家选择的成长风格）/ 关闭弹窗
