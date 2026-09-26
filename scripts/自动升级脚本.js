@@ -558,9 +558,22 @@
       // 曾导致每轮重复补发。这里检测到职业信息条目上无 grantedLv/grantedSp 时自动补齐，
       // 使保底立即对齐并停止补发；此前已多发的 HP/MP/SP/技能点需玩家按需手动校准。
       if (safeParseInt(fe.grantedLv, -1) < 0 && safeParseInt(fe.grantedSp, -1) < 0) {
-        fe.grantedLv = lv;
-        fe.grantedSp = lv * safeParseInt(fg.sp, 0);
-        console.warn(`[职业升级][${job}] 检测到旧版${fusedMeta ? '融合职业' : '自创职业'}，已自动补齐追踪字段（grantedLv=${fe.grantedLv}, grantedSp=${fe.grantedSp}）以停止每轮补发；若数值已因重复补发过多，请用全局修改器手动校准`);
+        // 【BUG修复】旧版自愈无条件把 grantedLv/grantedSp 标到当前等级，导致新建/一次性写入的
+        // 自创职业（即便已选魔法等风格）首次成长被整体吞掉（技能点 0、HP/MP/SP 冻结不随等级增长）。
+        // 现按技能点区分：
+        //   技能点>0 → 旧档资源已按等级发放过（仅缺追踪字段），只补写追踪字段、不再补发；
+        //   技能点=0 → 视为从未发放（新建/一次性写入），grantedLv 回退到上一轮等级，
+        //              本轮起正常逐级补发（技能点按 等级×每级sp 全额补齐）。
+        const prevLv0 = findJobLevel(prevJobs, job);
+        if (safeParseInt(fe.技能点, 0) > 0) {
+          fe.grantedLv = lv;
+          fe.grantedSp = lv * safeParseInt(fg.sp, 0);
+          console.warn(`[职业升级][${job}] 旧档自愈：技能点>0 视为资源已发放，仅补写追踪字段（grantedLv=${fe.grantedLv}, grantedSp=${fe.grantedSp}）`);
+        } else {
+          fe.grantedLv = Math.min(lv, Math.max(prevLv0, 0));
+          fe.grantedSp = 0;
+          console.warn(`[职业升级][${job}] 自创/融合职业技能点为0：视为从未发放成长，自 grantedLv=${fe.grantedLv} 起补齐（本轮补 ${lv - fe.grantedLv} 级 + 技能点 ${lv * safeParseInt(fg.sp, 0)}）`);
+        }
       }
 
       // 追踪字段：优先读 职业信息[职业].grantedLv/grantedSp（与 HP/SP/技能点同层，事件写回可靠），

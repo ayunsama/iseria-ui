@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>独立测试 - 自定义职业成长</title>
+<style>
+  body { margin:0; background:#111218; color:#d8d4c8; font-family:Consolas,"Microsoft YaHei",monospace; padding:20px; font-size:13px; }
+  .pass { color:#7fc97f; } .fail { color:#f28b8b; } .sec { color:#c9a86a; margin-top:14px; }
+  #summary { margin-top:16px; font-size:15px; }
+  pre { white-space:pre-wrap; margin:2px 0 2px 18px; color:#9aa0b4; }
+</style>
+</head>
+<body>
+<h2>独立测试 - 自定义职业成长（魔法风格）冒烟</h2>
+<div id="results"></div>
+<div id="summary"></div>
+<script>
+/* ===== 环境桩：酒馆助手 ===== */
+window.__HANDLERS = {};
+window.Mvu = { events: { VARIABLE_UPDATE_ENDED: 'VARIABLE_UPDATE_ENDED', COMMAND_PARSED: 'COMMAND_PARSED' }, getMvuData: () => ({ stat_data: {} }) };
+window.eventOn = (n, f) => { (window.__HANDLERS[n] = window.__HANDLERS[n] || []).push(f); };
+window.waitGlobalInitialized = async () => {};
+window.toastr = { success(){}, error(){}, warning(){}, info(){} };
+window.getScriptButtons = undefined; // registerManualButton 守卫直接返回
+window._ = {
+  get: (o, p, d) => { try { let v = o; for (const k of String(p).split('.')) { if (v == null) return d; v = v[k]; } return v === undefined ? d : v; } catch (e) { return d; } },
+  set: (o, p, v) => { try { let c = o; const ks = String(p).split('.'); while (ks.length > 1) { const k = ks.shift(); if (typeof c[k] !== 'object' || c[k] === null) c[k] = {}; c = c[k]; } c[ks[0]] = v; } catch (e) {} return o; },
+  cloneDeep: o => JSON.parse(JSON.stringify(o)),
+};
+window.$ = function (f) { if (typeof f === 'function') { try { f(); } catch (e) { console.error('[mock $]', e); } } return window.$; };
+window.__LOGS = [];
+['log','info','warn','error'].forEach(k => { const o = console[k].bind(console); console[k] = (...a) => { window.__LOGS.push(a.join(' ')); o(...a); }; });
+</script>
+<script>document.write('<script src="./scripts/自动升级脚本.js?v=' + Date.now() + '"><\/script>');</script>
+<script>
+/* ===== 测试驱动 ===== */
+const R = document.getElementById('results');
+let pass = 0, fail = 0;
+const FAILS = [];
+function T(name, cond, detail) {
+  const ok = !!cond;
+  ok ? pass++ : (fail++, FAILS.push(name));
+  R.insertAdjacentHTML('beforeend', `<div class="${ok ? 'pass' : 'fail'}">${ok ? '✅' : '❌'} ${name}${detail ? ' — ' + detail : ''}</div>`);
+}
+function S(title) { R.insertAdjacentHTML('beforeend', `<div class="sec">【${title}】</div>`); }
+const clone = o => JSON.parse(JSON.stringify(o));
+function fire(curr, prev) {
+  // handler 读取 rawVariables.stat_data.{主角, $customSkillTrees}——必须按真实结构包装
+  function wrap(o) {
+    const sd = Object.assign({ 主角: o }, o.$customSkillTrees ? { $customSkillTrees: o.$customSkillTrees } : {});
+    return { stat_data: sd };
+  }
+  (window.__HANDLERS["VARIABLE_UPDATE_ENDED"] || []).forEach(f => f(wrap(curr), wrap(prev)));
+}
+function mkActor(jobName, lv, sp, hp, mp, spx) {
+  return clone({
+    基础信息: { 姓名: '测试员', 种族: '人类' },
+    基础属性: { 力量: 10, 敏捷: 10, 体质: 10, 智力: 14, 感知: 10, 魅力: 10 },
+    基础状态: {
+      HP: { 当前: hp, 最大: hp }, MP: { 当前: mp, 最大: mp }, SP: { 当前: spx, 最大: spx },
+      总等级: lv, 待分配职业等级: 0,
+      经验值: { 当前: 0, 升级所需: 999999 },
+      职业信息: { [jobName]: { 等级: lv, 技能点: sp } },
+    },
+    等阶: '普通',
+  });
+}
+const TREES = style => ({ '星辉法师': { '定制技能树': { '风格': style } } });
+const handler = () => (window.__HANDLERS['VARIABLE_UPDATE_ENDED'] || [])[0];
+
+// 等待脚本 init（$(init) 异步注册 handler）
+const waitReady = setInterval(() => {
+  if ((window.__HANDLERS['VARIABLE_UPDATE_ENDED'] || []).length) {
+    clearInterval(waitReady);
+    run();
+  }
+}, 50);
+
+function run() {
+  S('S1 复现：自创职业(魔法) Lv1→Lv2，AI 写入等级（无 granted 追踪字段）');
+  {
+    const prev = mkActor('星辉法师', 1, 0, 50, 20, 30);
+    const curr = clone(prev);
+    prev.$customSkillTrees = TREES('魔法');
+    curr.$customSkillTrees = TREES('魔法');
+    curr.基础状态.职业信息['星辉法师'].等级 = 2;
+    const hp0 = 50, mp0 = 20, sp0 = 30;
+    fire(curr, prev);
+    const fe = curr.基础状态.职业信息['星辉法师'];
+    const hp = curr.基础状态.HP.最大, mp = curr.基础状态.MP.最大, spn = curr.基础状态.SP.最大, sp = fe.技能点;
+    T('S1-HP 随魔法成长（d6 → 51~56）', hp >= 51 && hp <= 56, `HP ${hp0}→${hp}`);
+    T('S1-MP 随魔法成长（d8+智力2 → 23~30）', mp >= 23 && mp <= 30, `MP ${mp0}→${mp}`);
+    T('S1-SP 不变（魔法无 SP 成长）', spn === sp0, `SP ${sp0}→${spn}`);
+    T('S1-技能点 +5（2级×5）', sp === 10, `技能点 0→${sp}`);
+    T('S1- grantedSp 追踪写入', (fe.grantedSp|0) === 10, 'grantedSp=' + fe.grantedSp);
+  }
+
+  S('S2 回归：魔法风格连续升级 Lv2→Lv3→Lv4 成长连续');
+  {
+    const prev = mkActor('星辉法师', 2, 10, 52, 24, 30);
+    prev.$customSkillTrees = TREES('魔法');
+    prev.基础状态.职业信息['星辉法师'].grantedLv = 2;
+    prev.基础状态.职业信息['星辉法师'].grantedSp = 10;
+    const curr = clone(prev);
+    curr.基础状态.职业信息['星辉法师'].等级 = 3;
+    fire(curr, prev);
+    const sp3 = curr.基础状态.职业信息['星辉法师'].技能点;
+    T('S2-Lv3 技能点 = 15（3×5）', sp3 === 15, `技能点 10→${sp3}`);
+    T('S2-Lv3 MP 满骰补发 = 34（24+8+2）', curr.基础状态.MP.最大 === 34, `MP→${curr.基础状态.MP.最大}`);
+    const prev2 = clone(curr);
+    curr.基础状态.职业信息['星辉法师'].等级 = 4;
+    fire(curr, prev2);
+    T('S2-Lv4 技能点 = 20（4×5）', curr.基础状态.职业信息['星辉法师'].技能点 === 20, `技能点→${curr.基础状态.职业信息['星辉法师'].技能点}`);
+  }
+
+  S('S3 回归：一次性写入 Lv3（全新职业首次获得）后触发成长');
+  {
+    const prev = mkActor('星辉法师', 0, 0, 50, 20, 30);
+    prev.基础状态.职业信息 = {};
+    const curr = clone(prev);
+    curr.$customSkillTrees = TREES('魔法');
+    curr.基础状态.职业信息 = { '星辉法师': { 等级: 3, 技能点: 0 } };
+    fire(curr, prev);
+    const fe = curr.基础状态.职业信息['星辉法师'];
+    // 首次初始化分支按设计跳过成长，但 granted 追踪应从 0 起算（不得自愈吞掉）
+    T('S3-首次初始化 grantedLv=0（不得标记为已发放）', (fe.grantedLv|0) === 0, 'grantedLv=' + fe.grantedLv);
+    T('S3-首次初始化 grantedSp=0', (fe.grantedSp|0) === 0, 'grantedSp=' + fe.grantedSp);
+    // 随后一次普通更新（等级不变）应把 3 级资源一次性补齐（技能点 15）
+    const prev2 = clone(curr);
+    fire(curr, prev2);
+    
+    T('S3-技能点全额补齐 15（3×5）', curr.基础状态.职业信息['星辉法师'].技能点 === 15, `技能点→${curr.基础状态.职业信息['星辉法师'].技能点}`);
+    T('S3-HP/MP 不变（一次性写入的属性行走「升级分配」→补齐三维）', curr.基础状态.HP.最大 === 50 && curr.基础状态.MP.最大 === 20, `HP=${curr.基础状态.HP.最大} MP=${curr.基础状态.MP.最大}`);
+  }
+
+  S('S4 回归：旧档自愈（资源已发放、仅缺追踪字段）不重复补发');
+  {
+    const prev = mkActor('星辉法师', 3, 15, 68, 50, 30); // 资源已是 3 级满骰值
+    prev.$customSkillTrees = TREES('魔法');
+    const curr = clone(prev); // 等级不变
+    fire(curr, prev);
+    const fe = curr.基础状态.职业信息['星辉法师'];
+    T('S4-技能点保持 15（不重复补发）', fe.技能点 === 15, `技能点=${fe.技能点}`);
+    T('S4-HP 保持 68', curr.基础状态.HP.最大 === 68, `HP=${curr.基础状态.HP.最大}`);
+    T('S4-追踪字段已补写', (fe.grantedLv|0) === 3 && (fe.grantedSp|0) === 15, `grantedLv=${fe.grantedLv}, grantedSp=${fe.grantedSp}`);
+  }
+
+  S('S5 回归：未选风格 → 混合兜底（HP d8 / SP d6 / MP d4 / 技能点 4）');
+  {
+    const prev = mkActor('星辉法师', 1, 0, 50, 20, 30);
+    const curr = clone(prev); // 无 $customSkillTrees
+    curr.基础状态.职业信息['星辉法师'].等级 = 2;
+    fire(curr, prev);
+    const hp = curr.基础状态.HP.最大, mp = curr.基础状态.MP.最大, spn = curr.基础状态.SP.最大;
+    const sp = curr.基础状态.职业信息['星辉法师'].技能点;
+    T('S5-HP d8（51~58）', hp >= 51 && hp <= 58, `HP→${hp}`);
+    T('S5-SP d6（31~36）', spn >= 31 && spn <= 36, `SP→${spn}`);
+    T('S5-MP d4+智力2（23~26）', mp >= 23 && mp <= 26, `MP→${mp}`);
+    T('S5-技能点 +4×2 = 8', sp === 8, `技能点→${sp}`);
+  }
+
+  document.getElementById('summary').innerHTML =
+    `<span class="${fail ? 'fail' : 'pass'}">结果：${pass} 通过 / ${fail} 失败</span>` +
+    (FAILS.length ? `<pre>失败项：${FAILS.join('；')}</pre>` : '');
+  window.__RESULTS = { pass, fail, FAILS };
+  document.title = `冒烟 ${pass}✓/${fail}✗`;
+}
+</script>
+</body>
+</html>
