@@ -80,11 +80,17 @@
     const mo = idx % 12 + 1;
     return '圣光历' + y + '年' + mo + '月';
   }
-  // 记录ID：真实时间戳 YYYYMMDD-HHmm-序号（与状态栏 trackPush 同风格）
-  function genRecordId(seq) {
+  // 记录ID：真实时间戳 YYYYMMDD-HHmm-序号（与状态栏 trackPush 同风格）；
+  // 对当前流水容器查重——同一真实分钟内多轮结算时追加随机后缀，防止后一轮覆盖前一轮记录
+  function genRecordId(track, seq) {
     const d = new Date();
     const p2 = n => String(n).padStart(2, '0');
-    return '' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + '-' + p2(seq);
+    let id = '' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + '-' + p2(seq);
+    let guard = 0;
+    while (track && track[id] !== undefined && guard++ < 1000) {
+      id = id + '-' + Math.floor(Math.random() * 900 + 100);
+    }
+    return id;
   }
   function appendCultivationRecord(member, time, content, effect) {
     if (!Array.isArray(member.培养记录)) member.培养记录 = [];
@@ -266,7 +272,7 @@
     let seq = 1;
     for (const rec of pendingRecords) {
       running += rec.金额;
-      world.追踪记录[genRecordId(seq++)] = {
+      world.追踪记录[genRecordId(world.追踪记录, seq++)] = {
         时间: dateStr || '',
         类型: rec.类型,
         金额: rec.金额,
