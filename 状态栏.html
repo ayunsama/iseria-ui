@@ -3450,32 +3450,65 @@ var TRT_TECH = {
                         html += '<div class="jrpg-list-empty">' + (isFuse ? '该融合职业暂无技能数据' : '该职业暂无可用技能（受流派限制）') + '</div>';
                     }
                 } else {
-                // 按需等级分组（1-20 级）
+                // 等级段模板分组（对齐位阶：1-4普通/5-8超凡/9-12精英/13-16史诗/17-20传说/21+神话），每段可折叠；默认仅展开当前位阶所在段
+                var BANDS = [
+                    { min: 1, max: 4, name: '普通阶' },
+                    { min: 5, max: 8, name: '超凡阶' },
+                    { min: 9, max: 12, name: '精英阶' },
+                    { min: 13, max: 16, name: '史诗阶' },
+                    { min: 17, max: 20, name: '传说阶' },
+                    { min: 21, max: 999, name: '神话阶' }
+                ];
                 var byLv = {};
                 filtered.forEach(function(sk) { var lv = sk.lvl || 1; (byLv[lv] = byLv[lv] || []).push(sk); });
                 var lvKeys = Object.keys(byLv).map(Number).sort(function(a, b) { return a - b; });
-                lvKeys.forEach(function(lv) {
-                    var locked = jobLv < lv;
-                    html += '<div style="font-weight:bold;color:' + (locked ? '#aaa' : '#8b6b4a') + ';margin:8px 0 2px;font-size:12px;border-bottom:1px dashed #d2b48c;">Lv.' + lv + (locked ? ' <span style="color:#e74c3c;font-size:10px;font-weight:normal;">🔒 需' + escapeAttr(jobName) + ' ' + lv + '级</span>' : '') + '</div>';
-                    byLv[lv].forEach(function(sk) {
-                        // 融合技能自带 type；普通技能用描述前缀推断
-                        var type = (isFuse && sk.type) ? sk.type : skillTypeOf(sk, jobName);
-                        var skillName = sk.n || '';
-                        if (!skillName) return;
-                        var typeIcon = type === '魔法' ? '✦' : (type === '神术' ? '✧' : '⚔️');
-                        var isLearned = !!(learned[type] && learned[type][skillName]);
-                        var cost = parseInt(sk.c, 10) || 1;
-                        var spNotEnough = cost > totalSp;
-                        html += '<div class="jrpg-list-item" style="' + (isLearned ? 'opacity:0.75;' : (locked || spNotEnough ? 'opacity:0.55;' : '')) + '">';
-                        html += '<div class="jrpg-item-header"><span>' + typeIcon + ' <strong>' + escapeAttr(skillName) + '</strong> <span style="font-size:10px;color:#8e44ad;">[' + type + ']</span></span>';
-                        if (isLearned) html += '<span style="color:#27ae60;font-size:11px;font-weight:bold;">✅ 已学习</span>';
-                        else if (locked) html += '<span style="color:#e74c3c;font-size:11px;">🔒 需 ' + lv + '级</span>';
-                        else if (spNotEnough) html += '<button class="jrpg-btn-sm" disabled style="background:#bbb;color:#fff;border-color:#bbb;padding:2px 10px;font-size:11px;cursor:not-allowed;" title="需要 ' + cost + ' 点技能点，当前可用 ' + totalSp + ' 点">技能点不足</button>';
-                        else html += '<button class="jrpg-btn-sm ' + (isFuse ? 'jrpg-vs-learn' : 'jrpg-st-learn') + '" data-job="' + escapeAttr(jobName) + '" data-skill="' + escapeAttr(skillName) + '" data-type="' + type + '" style="background:#2980b9;color:#fff;border-color:#2980b9;padding:2px 10px;font-size:11px;">学习 (-' + cost + '点)</button>';
-                        html += '</div>';
-                        html += '<div class="jrpg-item-desc">' + escapeAttr(sk.d || '') + (isFuse && sk.lvl ? '　<span style="color:#e74c3c;">[需融合 Lv.' + sk.lvl + ']</span>' : '') + '</div>';
-                        html += '</div>';
+                var bandIdBase = jobName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+                var bandSections = [];
+                BANDS.forEach(function(band, bi) {
+                    var lvs = lvKeys.filter(function(lv) { return lv >= band.min && lv <= band.max; });
+                    if (!lvs.length) return;
+                    var bandSkills = lvs.reduce(function(arr, lv) { return arr.concat(byLv[lv]); }, []);
+                    var learnedCount = bandSkills.filter(function(sk) {
+                        var t = (isFuse && sk.type) ? sk.type : skillTypeOf(sk, jobName);
+                        return !!(learned[t] && learned[t][sk.n]);
+                    }).length;
+                    var isCurrent = jobLv >= band.min && jobLv <= band.max;
+                    bandSections.push({ band: band, lvs: lvs, count: bandSkills.length, learnedCount: learnedCount, isCurrent: isCurrent });
+                });
+                if (bandSections.length && !bandSections.some(function(s) { return s.isCurrent; })) {
+                    // 角色等级超出全部已解锁段（如高等级低阶树）：展开最后一段兜底
+                    bandSections[bandSections.length - 1].isCurrent = true;
+                }
+                bandSections.forEach(function(sec) {
+                    var bandId = 'lvband-' + bandIdBase + '-' + sec.band.min;
+                    html += '<div style="font-weight:bold;color:#5a4430;margin:8px 0 0;font-size:12px;background:rgba(139,107,74,0.1);border-radius:4px;padding:4px 8px;cursor:pointer;user-select:none;" data-fold-target="#' + bandId + '" title="点击折叠/展开">';
+                    html += '📚 ' + sec.band.name + ' <span style="font-size:10px;color:#8b6b4a;font-weight:normal;">Lv.' + sec.band.min + (sec.band.max <= 20 ? '-' + sec.band.max : '+') + ' · ' + sec.count + ' 技能' + (sec.learnedCount ? ' · 已学 ' + sec.learnedCount : '') + '</span>' + (sec.isCurrent ? ' <span style="font-size:10px;color:#27ae60;font-weight:normal;">📍当前</span>' : '');
+                    html += '<span class="jrpg-fold-arrow" style="float:right;color:#8b6b4a;">' + (sec.isCurrent ? '▾' : '▸') + '</span></div>';
+                    html += '<div id="' + bandId + '" style="display:' + (sec.isCurrent ? '' : 'none') + ';">';
+                    sec.lvs.forEach(function(lv) {
+                        var locked = jobLv < lv;
+                        html += '<div style="font-weight:bold;color:' + (locked ? '#aaa' : '#8b6b4a') + ';margin:8px 0 2px;font-size:12px;border-bottom:1px dashed #d2b48c;">Lv.' + lv + (locked ? ' <span style="color:#e74c3c;font-size:10px;font-weight:normal;">🔒 需' + escapeAttr(jobName) + ' ' + lv + '级</span>' : '') + '</div>';
+                        byLv[lv].forEach(function(sk) {
+                            // 融合技能自带 type；普通技能用描述前缀推断
+                            var type = (isFuse && sk.type) ? sk.type : skillTypeOf(sk, jobName);
+                            var skillName = sk.n || '';
+                            if (!skillName) return;
+                            var typeIcon = type === '魔法' ? '✦' : (type === '神术' ? '✧' : '⚔️');
+                            var isLearned = !!(learned[type] && learned[type][skillName]);
+                            var cost = parseInt(sk.c, 10) || 1;
+                            var spNotEnough = cost > totalSp;
+                            html += '<div class="jrpg-list-item" style="' + (isLearned ? 'opacity:0.75;' : (locked || spNotEnough ? 'opacity:0.55;' : '')) + '">';
+                            html += '<div class="jrpg-item-header"><span>' + typeIcon + ' <strong>' + escapeAttr(skillName) + '</strong> <span style="font-size:10px;color:#8e44ad;">[' + type + ']</span></span>';
+                            if (isLearned) html += '<span style="color:#27ae60;font-size:11px;font-weight:bold;">✅ 已学习</span>';
+                            else if (locked) html += '<span style="color:#e74c3c;font-size:11px;">🔒 需 ' + lv + '级</span>';
+                            else if (spNotEnough) html += '<button class="jrpg-btn-sm" disabled style="background:#bbb;color:#fff;border-color:#bbb;padding:2px 10px;font-size:11px;cursor:not-allowed;" title="需要 ' + cost + ' 点技能点，当前可用 ' + totalSp + ' 点">技能点不足</button>';
+                            else html += '<button class="jrpg-btn-sm ' + (isFuse ? 'jrpg-vs-learn' : 'jrpg-st-learn') + '" data-job="' + escapeAttr(jobName) + '" data-skill="' + escapeAttr(skillName) + '" data-type="' + type + '" style="background:#2980b9;color:#fff;border-color:#2980b9;padding:2px 10px;font-size:11px;">学习 (-' + cost + '点)</button>';
+                            html += '</div>';
+                            html += '<div class="jrpg-item-desc">' + escapeAttr(sk.d || '') + (isFuse && sk.lvl ? '　<span style="color:#e74c3c;">[需融合 Lv.' + sk.lvl + ']</span>' : '') + '</div>';
+                            html += '</div>';
+                        });
                     });
+                    html += '</div>';
                 });
                 }
                 html += '</div>';
@@ -3587,39 +3620,88 @@ var TRT_TECH = {
                     var vData = vMap[variantName] || {};
                     var skills = vData.skills || [];
                     if (!skills.length) return;
-                    html += '<div style="font-weight:bold;color:#8e44ad;margin:10px 0 4px 0;border-bottom:2px solid #8e44ad;background:rgba(142,68,173,0.06);padding:4px 8px;border-radius:4px;">🎨 ' + escapeAttr(jobName) + ' · ' + escapeAttr(variantName) + (vData.level ? ' <span style="font-size:10px;color:#8e44ad;">继承Lv.' + vData.level + '</span>' : '') + '</div>';
-                    skills.forEach(function(sk) {
-                        var type = sk.type || '技能';
+                    var fuseLv = parseInt(vData.level, 10) || 0;
+                    html += '<div style="font-weight:bold;color:#8e44ad;margin:10px 0 4px 0;border-bottom:2px solid #8e44ad;background:rgba(142,68,173,0.06);padding:4px 8px;border-radius:4px;">🎨 ' + escapeAttr(jobName) + ' · ' + escapeAttr(variantName) + (fuseLv ? ' <span style="font-size:10px;color:#8e44ad;">继承Lv.' + fuseLv + '</span>' : '') + '</div>';
+                    // 等级段模板折叠（与职业技能树同款）
+                    var VBANDS = [
+                        { min: 1, max: 4, name: '普通阶' },
+                        { min: 5, max: 8, name: '超凡阶' },
+                        { min: 9, max: 12, name: '精英阶' },
+                        { min: 13, max: 16, name: '史诗阶' },
+                        { min: 17, max: 20, name: '传说阶' },
+                        { min: 21, max: 999, name: '神话阶' }
+                    ];
+                    function vType(sk) { var t = sk.type || '技能'; return t === '魔法' ? '魔法' : (t === '神术' ? '神术' : '技能'); }
+                    function vLearned(sk) {
+                        var typeName = vType(sk);
                         var skillName = sk.n || '';
-                        if (!skillName) return;
-                        var typeName = type === '魔法' ? '魔法' : (type === '神术' ? '神术' : '技能');
-                        var typeIcon = type === '魔法' ? '✦' : (type === '神术' ? '✧' : '⚔️');
-                        var isLearned = false;
-                        if (learned[typeName]) {
-                            isLearned = !!learned[typeName][skillName];
-                            if (!isLearned) {
-                                Object.keys(learned[typeName]).forEach(function(learnedKey) {
-                                    if (!isLearned && (learnedKey === skillName || learnedKey.indexOf('] ' + skillName) !== -1 || learnedKey.indexOf('「' + skillName + '」') !== -1)) isLearned = true;
-                                });
-                            }
-                        }
-                        var cost = parseInt(sk.c, 10) || 1;
-                        var fuseLv = parseInt(vData.level, 10) || 0;
-                        var lvlLocked = fuseLv > 0 && sk.lvl && (parseInt(sk.lvl, 10) > fuseLv);
-                        var spNotEnough = cost > totalSp;
-                        html += '<div class="jrpg-list-item" style="' + (isLearned ? 'opacity:0.75;' : ((lvlLocked || spNotEnough) ? 'opacity:0.55;' : '')) + '">';
-                        html += '<div class="jrpg-item-header"><span>' + typeIcon + ' <strong>' + escapeAttr(skillName) + '</strong> <span style="font-size:10px;color:#8e44ad;">[' + typeName + ']</span></span>';
-                        if (isLearned) {
-                            html += '<span style="color:#27ae60;font-size:11px;font-weight:bold;">✅ 已学习</span>';
-                        } else if (lvlLocked) {
-                            html += '<span style="color:#e74c3c;font-size:11px;font-weight:bold;">🔒 需融合 Lv.' + sk.lvl + '</span>';
-                        } else if (spNotEnough) {
-                            html += '<button class="jrpg-btn-sm" disabled style="background:#bbb;color:#fff;border-color:#bbb;padding:2px 10px;font-size:11px;cursor:not-allowed;" title="需要 ' + cost + ' 点技能点，当前可用 ' + totalSp + ' 点">技能点不足</button>';
-                        } else {
-                            html += '<button class="jrpg-btn-sm jrpg-vs-learn" data-job="' + escapeAttr(jobName) + '" data-skill="' + escapeAttr(skillName) + '" data-type="' + typeName + '" style="background:#2980b9;color:#fff;border-color:#2980b9;padding:2px 10px;font-size:11px;">学习 (-' + cost + '点)</button>';
-                        }
-                        html += '</div>';
-                        html += '<div class="jrpg-item-desc">' + escapeAttr(sk.d || '') + (sk.lvl ? '　<span style="color:#e74c3c;">[需' + (fuseLv > 0 ? '融合' : escapeAttr(jobName)) + ' Lv.' + sk.lvl + ']</span>' : '') + '</div>';
+                        if (!learned[typeName]) return false;
+                        if (learned[typeName][skillName]) return true;
+                        var hit = false;
+                        Object.keys(learned[typeName]).forEach(function(learnedKey) {
+                            if (!hit && (learnedKey === skillName || learnedKey.indexOf('] ' + skillName) !== -1 || learnedKey.indexOf('「' + skillName + '」') !== -1)) hit = true;
+                        });
+                        return hit;
+                    }
+                    var vByLv = {};
+                    skills.forEach(function(sk) { var lv = sk.lvl || 1; (vByLv[lv] = vByLv[lv] || []).push(sk); });
+                    var vLvKeys = Object.keys(vByLv).map(Number).sort(function(a, b) { return a - b; });
+                    var vBandIdBase = (jobName + '-' + variantName).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+                    var vSections = [];
+                    VBANDS.forEach(function(band) {
+                        var lvs = vLvKeys.filter(function(lv) { return lv >= band.min && lv <= band.max; });
+                        if (!lvs.length) return;
+                        var bandSkills = lvs.reduce(function(arr, lv) { return arr.concat(vByLv[lv]); }, []);
+                        var learnedCount = bandSkills.filter(function(sk) { return sk.n && vLearned(sk); }).length;
+                        vSections.push({ band: band, lvs: lvs, count: bandSkills.length, learnedCount: learnedCount });
+                    });
+                    // 默认展开：第一个含「未学习且未锁等级」技能的段；全学完则展开最后一段
+                    var openIdx = -1;
+                    vSections.forEach(function(sec, si) {
+                        if (openIdx !== -1) return;
+                        var hasTarget = sec.lvs.some(function(lv) {
+                            return vByLv[lv].some(function(sk) {
+                                var locked = fuseLv > 0 && sk.lvl && (parseInt(sk.lvl, 10) > fuseLv);
+                                return sk.n && !vLearned(sk) && !locked;
+                            });
+                        });
+                        if (hasTarget) openIdx = si;
+                    });
+                    if (openIdx === -1 && vSections.length) openIdx = vSections.length - 1;
+                    vSections.forEach(function(sec, si) {
+                        var bandId = 'vband-' + vBandIdBase + '-' + sec.band.min;
+                        var open = si === openIdx;
+                        html += '<div style="font-weight:bold;color:#5a4430;margin:8px 0 0;font-size:12px;background:rgba(142,68,173,0.08);border-radius:4px;padding:4px 8px;cursor:pointer;user-select:none;" data-fold-target="#' + bandId + '" title="点击折叠/展开">';
+                        html += '📚 ' + sec.band.name + ' <span style="font-size:10px;color:#8b6b4a;font-weight:normal;">Lv.' + sec.band.min + (sec.band.max <= 20 ? '-' + sec.band.max : '+') + ' · ' + sec.count + ' 技能' + (sec.learnedCount ? ' · 已学 ' + sec.learnedCount : '') + '</span>';
+                        html += '<span class="jrpg-fold-arrow" style="float:right;color:#8b6b4a;">' + (open ? '▾' : '▸') + '</span></div>';
+                        html += '<div id="' + bandId + '" style="display:' + (open ? '' : 'none') + ';">';
+                        sec.lvs.forEach(function(lv) {
+                            html += '<div style="font-weight:bold;color:#8b6b4a;margin:8px 0 2px;font-size:12px;border-bottom:1px dashed #d2b48c;">Lv.' + lv + '</div>';
+                            vByLv[lv].forEach(function(sk) {
+                                var typeName = vType(sk);
+                                var skillName = sk.n || '';
+                                if (!skillName) return;
+                                var typeIcon = typeName === '魔法' ? '✦' : (typeName === '神术' ? '✧' : '⚔️');
+                                var isLearned = vLearned(sk);
+                                var cost = parseInt(sk.c, 10) || 1;
+                                var lvlLocked = fuseLv > 0 && sk.lvl && (parseInt(sk.lvl, 10) > fuseLv);
+                                var spNotEnough = cost > totalSp;
+                                html += '<div class="jrpg-list-item" style="' + (isLearned ? 'opacity:0.75;' : ((lvlLocked || spNotEnough) ? 'opacity:0.55;' : '')) + '">';
+                                html += '<div class="jrpg-item-header"><span>' + typeIcon + ' <strong>' + escapeAttr(skillName) + '</strong> <span style="font-size:10px;color:#8e44ad;">[' + typeName + ']</span></span>';
+                                if (isLearned) {
+                                    html += '<span style="color:#27ae60;font-size:11px;font-weight:bold;">✅ 已学习</span>';
+                                } else if (lvlLocked) {
+                                    html += '<span style="color:#e74c3c;font-size:11px;font-weight:bold;">🔒 需融合 Lv.' + sk.lvl + '</span>';
+                                } else if (spNotEnough) {
+                                    html += '<button class="jrpg-btn-sm" disabled style="background:#bbb;color:#fff;border-color:#bbb;padding:2px 10px;font-size:11px;cursor:not-allowed;" title="需要 ' + cost + ' 点技能点，当前可用 ' + totalSp + ' 点">技能点不足</button>';
+                                } else {
+                                    html += '<button class="jrpg-btn-sm jrpg-vs-learn" data-job="' + escapeAttr(jobName) + '" data-skill="' + escapeAttr(skillName) + '" data-type="' + typeName + '" style="background:#2980b9;color:#fff;border-color:#2980b9;padding:2px 10px;font-size:11px;">学习 (-' + cost + '点)</button>';
+                                }
+                                html += '</div>';
+                                html += '<div class="jrpg-item-desc">' + escapeAttr(sk.d || '') + (sk.lvl ? '　<span style="color:#e74c3c;">[需' + (fuseLv > 0 ? '融合' : escapeAttr(jobName)) + ' Lv.' + sk.lvl + ']</span>' : '') + '</div>';
+                                html += '</div>';
+                            });
+                        });
                         html += '</div>';
                     });
                 });
@@ -5671,7 +5753,6 @@ var TRT_TECH = {
                 'tab-party': '同伴',
                 'tab-advanced': '主角.资产与能力',
                 'tab-skilltree': '主角.基础状态.职业信息',
-                'tab-variant': '$customSkillTrees',
                 'tab-alloc': '主角.基础状态.职业信息',
                 'tab-family': '家族',
                 'tab-industry': '产业',
@@ -7484,6 +7565,13 @@ var TRT_TECH = {
                 $body.toggle();
                 $(this).find('.jrpg-skilltree-arrow').text($body.is(':visible') ? '▾' : '▸');
             });
+            // 通用折叠：带 data-fold-target 的标题（等级段分组/变体技能区等），data-fold-open-class 可选保持展开色
+            $('.jrpg-status-wrapper').on('click', '[data-fold-target]', function() {
+                var $body = $($(this).data('fold-target'));
+                if (!$body.length) return;
+                $body.toggle();
+                $(this).find('.jrpg-skilltree-arrow, .jrpg-fold-arrow').text($body.is(':visible') ? '▾' : '▸');
+            });
 
             // 自创职业：弹窗内生成定制技能树（读取玩家选择的成长风格）/ 关闭弹窗
             $('.jrpg-status-wrapper').on('click', '.jrpg-custom-gen', function() {
@@ -8000,7 +8088,7 @@ var TRT_TECH = {
             <div><div class="jrpg-box"><div class="jrpg-box-title">基础属性</div><div class="jrpg-stats-grid"><div class="jrpg-stat-item"><span>力量</span><span id="val-str">10</span></div><div class="jrpg-stat-item"><span>敏捷</span><span id="val-dex">10</span></div><div class="jrpg-stat-item"><span>体质</span><span id="val-con">10</span></div><div class="jrpg-stat-item"><span>智力</span><span id="val-int">10</span></div><div class="jrpg-stat-item"><span>感知</span><span id="val-wis">10</span></div><div class="jrpg-stat-item"><span>魅力</span><span id="val-cha">10</span></div></div><div class="jrpg-level-row" id="level-info-row"></div></div></div>
             <div><div class="jrpg-box"><div class="jrpg-box-title">职业信息</div><div class="jrpg-list" id="list-classes"><div class="jrpg-list-empty">暂无职业</div></div></div></div>
         </div>
-        <div class="jrpg-tabs"><button class="jrpg-tab-btn active" data-tab="tab-basic">状态</button><button class="jrpg-tab-btn" data-tab="tab-assets">能力</button><button class="jrpg-tab-btn" data-tab="tab-quests">任务</button><button class="jrpg-tab-btn" data-tab="tab-knowledge">见闻</button><button class="jrpg-tab-btn" data-tab="tab-party">同伴</button><button class="jrpg-tab-btn" data-tab="tab-advanced">超凡</button><button class="jrpg-tab-btn" data-tab="tab-skilltree">技能树</button><button class="jrpg-tab-btn" data-tab="tab-variant">变体技能</button><button class="jrpg-tab-btn" data-tab="tab-alloc">升级分配</button><button class="jrpg-tab-btn" data-tab="tab-track">🧺 追踪记录</button><button class="jrpg-tab-btn" data-tab="tab-family">👪 家族</button><button class="jrpg-tab-btn" data-tab="tab-industry">🏪 产业</button><button class="jrpg-tab-btn" data-tab="tab-territory">🏰 领地</button></div>
+        <div class="jrpg-tabs"><button class="jrpg-tab-btn active" data-tab="tab-basic">状态</button><button class="jrpg-tab-btn" data-tab="tab-assets">能力</button><button class="jrpg-tab-btn" data-tab="tab-quests">任务</button><button class="jrpg-tab-btn" data-tab="tab-knowledge">见闻</button><button class="jrpg-tab-btn" data-tab="tab-party">同伴</button><button class="jrpg-tab-btn" data-tab="tab-advanced">超凡</button><button class="jrpg-tab-btn" data-tab="tab-skilltree">技能树</button><button class="jrpg-tab-btn" data-tab="tab-alloc">升级分配</button><button class="jrpg-tab-btn" data-tab="tab-track">🧺 追踪记录</button><button class="jrpg-tab-btn" data-tab="tab-family">👪 家族</button><button class="jrpg-tab-btn" data-tab="tab-industry">🏪 产业</button><button class="jrpg-tab-btn" data-tab="tab-territory">🏰 领地</button></div>
 
         <div id="tab-basic" class="jrpg-tab-content active"><div class="jrpg-grid-2col"><div><div class="jrpg-box"><div class="jrpg-box-title">自身状态 <button class="edit-add-btn" data-add-path="主角.基础状态.自身状态" title="修改模式下新增状态">➕ 新增</button></div><div class="jrpg-list" id="list-status"><div class="jrpg-list-empty">无异常状态</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">🙏 信仰</div><div class="jrpg-list" id="list-faith"><div class="jrpg-list-empty">未信仰神明</div></div></div></div><div><div class="jrpg-box"><div class="jrpg-box-title">种族</div><div class="jrpg-list" id="list-race"><div class="jrpg-list-empty">—</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">魔力回路</div><div class="jrpg-list" id="list-circuit"><div class="jrpg-list-empty">—</div></div></div></div></div></div>
         <div id="tab-assets" class="jrpg-tab-content"><div class="jrpg-grid-2col"><div><div class="jrpg-box"><div class="jrpg-box-title">装备栏</div><div id="list-equipment"><div class="jrpg-list-empty">加载中…</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">🎒 物品栏 <button class="edit-add-btn" data-add-path="主角.资产与能力.物品栏" title="修改模式下新增物品">➕ 新增</button></div><div class="jrpg-list" id="list-inventory" style="max-height: 350px;"><div class="jrpg-list-empty">空无一物</div></div></div></div><div><div class="jrpg-box"><div class="jrpg-box-title">⬆️ 技能升级</div><div style="margin-top:4px;"><button class="jrpg-btn-sm jrpg-skill-up-btn" id="skill-upgrade-toggle" style="background:#e67e22;color:#fff;border:2px solid #e67e22;border-radius:4px;padding:4px 12px;font-size:12px;">技能升级：关</button></div><div id="skill-upgrade-bar" style="display:none;margin-top:6px;"></div></div><div class="jrpg-box"><div class="jrpg-box-title">⚔️ 角色技能</div><div class="jrpg-list" id="list-skills"><div class="jrpg-list-empty">未掌握技能</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">✦ 魔法栏</div><div class="jrpg-list" id="list-magic"><div class="jrpg-list-empty">未掌握魔法</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">✧ 神术栏</div><div class="jrpg-list" id="list-divine"><div class="jrpg-list-empty">未信仰神明</div></div></div></div></div></div>
@@ -8036,6 +8124,11 @@ var TRT_TECH = {
         <!-- 技能树：读取职业信息 + dbSkills（内置数据，不进上下文/AI 不可见），自动生成 1-20 级技能树 -->
         <div id="tab-skilltree" class="jrpg-tab-content">
             <div class="jrpg-box"><div class="jrpg-box-title">职业技能树</div><div id="list-skilltree"><div class="jrpg-list-empty">暂无职业</div></div></div>
+            <!-- 变体技能（角色创建/融合生成的定制树，$customSkillTrees）：并入技能树页签，默认折叠省地方 -->
+            <div class="jrpg-box">
+                <div class="jrpg-fold-head" data-fold-target="#list-variant-skills-wrap" style="font-weight:bold;color:#6b2e6b;margin:0 0 4px 0;border-bottom:2px solid #8e44ad;background:rgba(142,68,173,0.06);padding:4px 8px;border-radius:4px;cursor:pointer;user-select:none;">🎨 变体技能 <span style="font-weight:normal;font-size:11px;color:#8b6b4a;">（角色创建/融合生成的定制技能树，点击展开学习）</span><span class="jrpg-fold-arrow" style="float:right;color:#8b6b4a;">▸</span></div>
+                <div id="list-variant-skills-wrap" style="display:none;"><div id="list-variant-skills"><div class="jrpg-list-empty">暂无变体技能</div></div></div>
+            </div>
             <!-- 职业融合：任选两职业，AI 融合生成新技能树，继承两职业等级 -->
             <div class="jrpg-box">
                 <div class="jrpg-box-title">🔀 职业融合 <span style="font-weight:normal;font-size:11px;color:#8b6b4a;">（任选两个职业，AI 融合生成一条新技能树，继承两职业等级）</span></div>
@@ -8048,10 +8141,6 @@ var TRT_TECH = {
             </div>
         </div>
 
-        <!-- 变体技能：识别 $customSkillTrees 变量，生成可学习技能树 -->
-        <div id="tab-variant" class="jrpg-tab-content">
-            <div class="jrpg-box"><div class="jrpg-box-title">变体技能</div><div id="list-variant-skills"><div class="jrpg-list-empty">暂无变体技能</div></div></div>
-        </div>
 
         <!-- 追踪记录：物品栏/货币 变量流水 + 物品整理指令 + 货币一键修正 -->
         <div id="tab-track" class="jrpg-tab-content">
