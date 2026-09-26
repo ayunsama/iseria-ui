@@ -14,12 +14,13 @@
  *      - 每月产业：期数 = 月差；每季度产业：期数 = floor(月差/3)（锚定上次结算，跨年正确）
  *   5. 金额单位：铜盾（1金盾=1000铜盾，1银盾=100铜盾）；入账类型=产业收益，培养扣款类型=金盾支出
  *
- * 培养成长（与「变量更新规则·家族」一致）：
- *   - 每月按投入档位积累成长点：≥100铜盾=1点/月，≥500=2点/月，≥2000=4点/月，不足100=0点
- *   - 每满 12 点 → 方向属性池轮转 +1（武技:力量/敏捷/体质 魔法:智力/感知 学识:智力/感知/魅力
- *     商业:魅力/感知/智力 骑术:敏捷/体质/力量 信仰:感知/魅力/体质 综合:六维）
- *   - 轮转游标 = 培养记录条数（每结算一月追加一条记录）
- *   - 余额不足全额投入 → 本期成长停滞（记录资金不足，不扣款）
+ * 培养成长（与「变量更新规则·家族」一致）——成长由资质/年龄/方向契合的概率判定决定，金钱只维持培养：
+ *   - 每月判定一次，成功率(%) = 资质基础率(低劣30/平庸45/普通55/优秀70/卓越85/天才100)
+ *     × 方向契合(魔法有回路×1.1、无回路×0.8；武技/骑术 力量或敏捷≥13 ×1.1)
+ *     × 年龄段(<3岁×0.4、3-5岁×0.7、6-12岁×1.0、13-16岁×1.25、≥17岁×1.0)
+ *     × 费用系数(有生活费×1.0、家中自行指点×0.8)，再 ×0.25 缩放，clamp 5%~90%
+ *   - 判定成功 → 方向属性池轮转 +1，并有 35% 概率习得/提升方向技能（技能≤5级）
+ *   - 生活费不足全额 → 本月培养停滞（记录资金不足，不扣款）；多付不会加速成长
  *
  * 手动补结算：状态栏「🏪 产业」页签按钮 → eventEmit('产业结算_手动处理') →
  *   updateVariablesWith(message -1) 走同一结算函数（楼层级快照）。
@@ -28,8 +29,10 @@
   'use strict';
 
   const TAG = '[产业结算]';
-  const GROWTH_THRESHOLD = 12;   // 每满 12 成长点 = 属性 +1
   const RECORD_KEEP = 20;        // 每名成员培养记录最多保留条数
+  const SKILL_MAX_LV = 5;        // 技能等级上限
+  const SKILL_LEARN_CHANCE = 0.35; // 属性成长成功时习得/提升技能的概率
+  const GROWTH_SCALE = 0.25;     // 成长概率缩放系数
 
   const 培养方向属性池 = {
     '武技': ['力量', '敏捷', '体质'],
@@ -40,6 +43,18 @@
     '信仰': ['感知', '魅力', '体质'],
     '综合': ['力量', '敏捷', '体质', '智力', '感知', '魅力']
   };
+
+  // 方向技能池（「综合」从全部池中随机习得）
+  const 培养技能池 = {
+    '武技': [{ n: '基础剑术', d: '挥砍与格挡的基本功' }, { n: '体术', d: '拳脚与摔技' }, { n: '战阵操典', d: '队列与号令的纪律' }],
+    '魔法': [{ n: '冥想', d: '凝聚法力的入门功法' }, { n: '元素亲和', d: '感知元素脉动的呼吸法' }, { n: '咏唱基础', d: '标准咒文的发音与节奏' }],
+    '学识': [{ n: '读写', d: '通用语的识字与书写' }, { n: '算术', d: '账目与度量衡' }, { n: '博物杂记', d: '地理与生物见闻' }],
+    '商业': [{ n: '记账', d: '进出货与账簿打理' }, { n: '鉴赏', d: '货物成色与估价' }, { n: '讨价还价', d: '市集砍价的技巧' }],
+    '骑术': [{ n: '骑乘', d: '马背平衡与控缰' }, { n: '驯兽', d: '安抚与驱使牲畜' }, { n: '相马', d: '辨认坐骑优劣' }],
+    '信仰': [{ n: '祷言', d: '诵念神明的祈祷文' }, { n: '仪轨', d: '仪式流程与禁忌' }, { n: '圣典诵读', d: '经文的诵读与理解' }]
+  };
+  const 全技能池 = Object.keys(培养技能池).reduce(function (acc, k) { return acc.concat(培养技能池[k]); }, []);
+  const 资质成长率 = { '低劣': 30, '平庸': 45, '普通': 55, '优秀': 70, '卓越': 85, '天才': 100 };
 
   let isProcessing = false;
 
@@ -76,11 +91,59 @@
     member.培养记录.push({ 时间: time || '', 内容: content, 效果: effect });
     if (member.培养记录.length > RECORD_KEEP) member.培养记录 = member.培养记录.slice(-RECORD_KEEP);
   }
-  function tierPointsPerMonth(invest) {
-    if (invest >= 2000) return 4;
-    if (invest >= 500) return 2;
-    if (invest >= 100) return 1;
-    return 0;
+  // 成员年龄（周岁）：按 出生年月日 vs 世界.日期
+  function memberAge(m, nowStr) {
+    const b = /圣光历\s*(\d+)\s*年\s*(\d+)?\s*月?\s*(\d+)?/.exec(String(m.出生年月日 || ''));
+    const n = /圣光历\s*(\d+)\s*年\s*(\d+)?/.exec(String(nowStr || ''));
+    if (!b || !n) return null;
+    const by = parseInt(b[1], 10), bmo = parseInt(b[2] || 1, 10);
+    const ny = parseInt(n[1], 10), nmo = parseInt(n[2] || 1, 10);
+    let age = ny - by;
+    if (nmo < bmo) age -= 1;
+    return Math.max(0, age);
+  }
+  // 本月成长概率(%)：资质基础率 × 方向契合 × 年龄段 × 费用系数 × 0.25，clamp 5%~90%
+  function growthChance(m, plan, nowStr) {
+    const apt = 资质成长率[(m.资质 && m.资质.等级)] || 45;
+    let f = 1;
+    const dir = plan.方向;
+    if (dir === '魔法') f *= (m.魔力回路 && m.魔力回路.品阶 && m.魔力回路.品阶 !== '无回路') ? 1.1 : 0.8;
+    if (dir === '武技' || dir === '骑术') {
+      const a = isPlainObject(m.基础属性) ? m.基础属性 : {};
+      f *= (num(a.力量) >= 13 || num(a.敏捷) >= 13) ? 1.1 : 1.0;
+    }
+    const age = memberAge(m, nowStr);
+    if (age !== null) {
+      if (age < 3) f *= 0.4;
+      else if (age < 6) f *= 0.7;
+      else if (age >= 13 && age < 17) f *= 1.25;
+    }
+    if (num(plan.每期投入) <= 0) f *= 0.8;   // 家中自行指点
+    return Math.max(5, Math.min(90, Math.round(apt * f * GROWTH_SCALE)));
+  }
+  // 方向池轮转 +1 属性（游标=成长进度累计）
+  function grantAttribute(m, plan) {
+    const pool = 培养方向属性池[plan.方向] || 培养方向属性池['综合'];
+    const cursor = num(plan.成长进度);
+    const attr = pool[cursor % pool.length];
+    if (!isPlainObject(m.基础属性)) m.基础属性 = {};
+    m.基础属性[attr] = num(m.基础属性[attr]) + 1;
+    plan.成长进度 = cursor + 1;
+    return attr + '+1';
+  }
+  // 习得/提升方向技能（≤5级）；已满级返回 null
+  function grantSkill(m, dir) {
+    let pool = (dir === '综合' || !培养技能池[dir]) ? 全技能池 : 培养技能池[dir];
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (!isPlainObject(m.技能)) m.技能 = {};
+    const cur = m.技能[pick.n];
+    if (isPlainObject(cur)) {
+      if (num(cur.等级) >= SKILL_MAX_LV) return null;
+      cur.等级 = num(cur.等级) + 1;
+      return '「' + pick.n + '」Lv.' + cur.等级;
+    }
+    m.技能[pick.n] = { 描述: pick.d, 等级: 1 };
+    return '习得「' + pick.n + '」';
   }
 
   // ---------- 结算主函数：原地修改 statData，返回是否发生改动 ----------
@@ -154,43 +217,40 @@
         plan.上次结算 = monthIndexToStr(cur);
         changed = true;
 
-        const invest = num(plan.每期投入);
-        if (invest <= 0) continue;   // 挂名无投入：不扣款不成长
-
-        const cost = invest * months;
+        const fee = num(plan.每期投入);
+        const cost = fee * months;
         const moneyNow = num(statData.主角 && statData.主角.资产与能力 ? statData.主角.资产与能力.货币 : 0) + moneyDelta;
-        if (moneyNow < cost) {
-          appendCultivationRecord(m, dateStr, plan.方向 + '培养停滞×' + months + '月', '资金不足（需' + cost + '铜盾），本期无成长');
-          console.warn(TAG + ' 培养费用不足：' + name + ' 需 ' + cost + ' 铜盾，当前可用 ' + moneyNow);
+        if (cost > 0 && moneyNow < cost) {
+          appendCultivationRecord(m, dateStr, plan.方向 + '培养停滞×' + months + '月', '生活费不足（需' + cost + '铜盾），本月无成长');
+          console.warn(TAG + ' 培养生活费不足：' + name + ' 需 ' + cost + ' 铜盾，当前可用 ' + moneyNow);
           continue;
         }
-        moneyDelta -= cost;
+        if (cost > 0) moneyDelta -= cost;
 
-        const tier = tierPointsPerMonth(invest);
+        // 成长判定：逐月掷定（成功率由 资质×年龄×契合 决定，与生活费多少无关）
+        const prob = growthChance(m, plan, dateStr);
         const gains = [];
-        if (tier > 0) {
-          const pool = 培养方向属性池[plan.方向] || 培养方向属性池['综合'];
-          let progress = num(plan.成长进度) + tier * months;
-          const granted = Math.floor(progress / GROWTH_THRESHOLD);
-          if (granted > 0) {
-            progress -= granted * GROWTH_THRESHOLD;
-            if (!isPlainObject(m.基础属性)) m.基础属性 = {};
-            const cursor = Array.isArray(m.培养记录) ? m.培养记录.length : 0;
-            for (let i = 0; i < granted; i++) {
-              const attr = pool[(cursor + i) % pool.length];
-              m.基础属性[attr] = num(m.基础属性[attr]) + 1;
-              gains.push(attr + '+1');
+        const skillMsgs = [];
+        for (let i = 0; i < months; i++) {
+          if (Math.random() * 100 < prob) {
+            gains.push(grantAttribute(m, plan));
+            if (Math.random() < SKILL_LEARN_CHANCE) {
+              const sk = grantSkill(m, plan.方向);
+              if (sk) skillMsgs.push(sk);
             }
           }
-          plan.成长进度 = progress;
         }
-        appendCultivationRecord(m, dateStr, plan.方向 + '培养×' + months + '月（投入' + cost + '铜盾）',
-          gains.length > 0 ? gains.join(' ') : '积累成长点中（' + num(plan.成长进度) + '/' + GROWTH_THRESHOLD + '）');
-        pendingRecords.push({
-          类型: '金盾支出',
-          金额: -cost,
-          说明: name + '的培养费用（' + plan.方向 + '×' + months + '月）'
-        });
+        const effect = gains.length > 0 ? gains.join(' ') : ('平稳成长（天赋约' + prob + '%/月）');
+        appendCultivationRecord(m, dateStr,
+          plan.方向 + '培养×' + months + '月' + (cost > 0 ? '（生活费' + cost + '铜盾）' : '（家中自行指点）'),
+          effect + (skillMsgs.length > 0 ? '；' + skillMsgs.join('；') : ''));
+        if (cost > 0) {
+          pendingRecords.push({
+            类型: '金盾支出',
+            金额: -cost,
+            说明: name + '的培养生活费（' + plan.方向 + '×' + months + '月）'
+          });
+        }
       }
     }
 
