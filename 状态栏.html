@@ -8014,12 +8014,14 @@ var TRT_TECH = {
        ============================================================ */
     (function () {
         try {
+            // 幂等按【文档】算而不是按 window 算：酒馆助手更新楼层会重写消息 iframe 的 document，
+            // 旧文档上的监听器随之销毁；新文档没有 __isuriaSavePatchDoc 标记，周期扫描会自动重装（自愈）。
             function install(win) {
                 try {
-                    if (!win || win.__isuriaSavePatch) return;
-                    win.__isuriaSavePatch = true;
+                    if (!win || !win.document || !win.document.addEventListener) return;
                     var doc = win.document;
-                    if (!doc || !doc.addEventListener) return;
+                    if (doc.__isuriaSavePatchDoc) return;
+                    doc.__isuriaSavePatchDoc = true;
                     function TH() { return (win.TavernHelper) || (win.parent && win.parent.TavernHelper) || (win.top && win.top.TavernHelper) || null; }
                     function floorOf(el) {
                         while (el && el !== doc.body) {
@@ -8047,8 +8049,9 @@ var TRT_TECH = {
                         } catch (e) { return ''; }
                     }
                     function refreshInfo() {
+                        var boxes = doc.querySelectorAll('[data-iz-savebar]');
+                        if (!boxes.length) return;
                         getSlots(function (slots) {
-                            var boxes = doc.querySelectorAll('[data-iz-savebar]');
                             for (var i = 0; i < boxes.length; i++) {
                                 var box = boxes[i];
                                 var msg = box.closest ? box.closest('[mesid],[message_id],[mes]') : null;
@@ -8069,11 +8072,13 @@ var TRT_TECH = {
                             }
                         });
                     }
+                    // ★ 捕获阶段委托：即使正文渲染器内部 stopPropagation 也拦不住
                     doc.addEventListener('click', function (ev) {
                         var t = ev.target;
                         while (t && t !== doc.body && !(t.getAttribute && (t.getAttribute('data-iz-save') || t.getAttribute('data-iz-load')))) t = t.parentNode;
                         if (!t || t === doc.body) return;
-                        var th = TH(); if (!th) return;
+                        var th = TH();
+                        if (!th) { if (win.console && win.console.warn) win.console.warn('[时空存档] 未找到 TavernHelper 接口，读档按钮不可用'); return; }
                         var bar = t.closest ? t.closest('[data-iz-savebar]') : null;
                         var floor = floorOf(bar || t);
                         if (floor === null) { alert('未能定位当前楼层'); return; }
@@ -8103,14 +8108,43 @@ var TRT_TECH = {
                                 }).catch(function (e2) { if (th.toastr) th.toastr.error('读档失败: ' + (e2 && e2.message || e2), '时空存档'); });
                             });
                         }
-                    });
-                    setInterval(refreshInfo, 2000);
+                    }, true);
+                    setInterval(function () {
+                        // 文档被替换（楼层重渲染）后此定时器随旧文档闲置，自清防止堆积
+                        try { if (doc.defaultView === null) { clearInterval(this); return; } } catch (e) {}
+                        refreshInfo();
+                    }, 3000);
                     setTimeout(refreshInfo, 800);
+                    // ★ 防御性样式：正文渲染器若给按钮排误设 pointer-events:none / 缺手型，这里强制恢复
+                    try {
+                        var st = doc.createElement('style');
+                        st.textContent = '[data-iz-savebar],[data-iz-savebar] *{pointer-events:auto !important;}[data-iz-savebar] [data-iz-save],[data-iz-savebar] [data-iz-load]{cursor:pointer !important;}';
+                        (doc.head || doc.documentElement).appendChild(st);
+                    } catch (e) {}
                 } catch (e) { console.warn('[时空存档补丁] 安装失败:', e); }
             }
-            try { install(window); } catch (e) {}
-            try { install(window.parent); } catch (e) {}
-            try { if (window.top && window.top !== window.parent) install(window.top); } catch (e) {}
+            // ★ 全树扫描：状态栏只活在最新楼层，旧楼层的存档按钮排靠把补丁装进所有可达的同源 iframe 文档来覆盖
+            function installAll(win) {
+                try {
+                    if (!win) return;
+                    install(win);
+                    var docs = [];
+                    try { if (win.parent && win.parent.document) docs.push(win.parent.document); } catch (e) {}
+                    try { if (win.top && win.top.document && win.top.document !== win.parent.document) docs.push(win.top.document); } catch (e) {}
+                    for (var d = 0; d < docs.length; d++) {
+                        try {
+                            install(docs[d].defaultView);
+                            var frames = docs[d].querySelectorAll('iframe');
+                            for (var i = 0; i < frames.length; i++) {
+                                try { if (frames[i].contentWindow) install(frames[i].contentWindow); } catch (e) {}
+                            }
+                        } catch (e) {}
+                    }
+                } catch (e) { console.warn('[时空存档补丁] 扫描安装失败:', e); }
+            }
+            try { installAll(window); } catch (e) {}
+            // 楼层 iframe 随消息更新/新增不断重建：周期重扫（幂等按文档标记，重复扫描开销可忽略）
+            setInterval(function () { try { installAll(window); } catch (e) {} }, 1500);
         } catch (e) { console.warn('[时空存档补丁] 外层异常:', e); }
     })();
     </script>
