@@ -5654,6 +5654,8 @@ var TRT_TECH = {
             { label: '英灵', path: '英灵' },
             { label: '同伴', path: '同伴' },
             { label: '主要NPC', path: '主要NPC' },
+            { label: '家族', path: '家族' },
+            { label: '产业', path: '产业' },
             { label: '领地', path: '领地' },
             { label: '$customSkillTrees', path: '$customSkillTrees' },
             { label: '$flags', path: '$flags' }
@@ -5671,6 +5673,8 @@ var TRT_TECH = {
                 'tab-skilltree': '主角.基础状态.职业信息',
                 'tab-variant': '$customSkillTrees',
                 'tab-alloc': '主角.基础状态.职业信息',
+                'tab-family': '家族',
+                'tab-industry': '产业',
                 'tab-territory': '领地'
             };
             const $tab = $('.jrpg-status-wrapper .jrpg-tab-btn.active');
@@ -5962,6 +5966,86 @@ var TRT_TECH = {
                     commands.splice(i, 1);                   // 其余一律丢弃
                     if (typeof toastr !== 'undefined' && toastr.warning) toastr.warning('⚠️ 已拦截 AI 对 追踪记录 的 ' + cmd.type + ' 操作（仅允许新增流水）', '追踪记录');
                 }
+            }
+        }
+
+        // ============================================================
+        //  ★ 家族/产业写入守卫：
+        //  - 产业：放行 insert 新产业（/产业/名）与子字段 replace（描述/状态/每期收益/位置等）；
+        //          拦截 remove（防删账）、整条 replace（防覆盖脚本托管的 上次结算）、对 上次结算 的任何写入
+        //  - 家族.成员：放行 insert 新成员与子字段 replace（称谓/存亡/好感度/描述等）；
+        //          拦截 remove（死亡用 replace 存亡，禁删成员）、整条 replace（防覆盖 培养计划）、
+        //          对 培养计划/培养记录 的写入（玩家在状态栏设置、结算脚本维护）、出生年月日 的改写（首次补写除外）
+        // ============================================================
+        function famBirthFromAge(age, nowStr) {
+            var m = String(nowStr || '').match(/(\d{4})年?\s*(\d{1,2})?月?\s*(\d{1,2})?日?/);
+            if (!m) return '';
+            var y = parseInt(m[1], 10), mo = parseInt(m[2] || 1, 10), d = parseInt(m[3] || 1, 10);
+            var by = y - (parseInt(age, 10) || 0);
+            if (mo === 2 && d === 29 && by % 4 !== 0) d = 28;
+            return '圣光历' + by + '年' + mo + '月' + d + '日';
+        }
+        function filterFamilyIndustryCommands(commands) {
+            if (!commands || !commands.length) return;
+            var stat = null;
+            try { stat = _.get(Mvu.getMvuData({ type: 'message', message_id: 'latest' }), 'stat_data', {}); } catch (e) {}
+            function stripRoot(segs) {
+                if (segs.length && (segs[0] === 'stat_data' || segs[0] === 'status_current_variables')) return segs.slice(1);
+                return segs;
+            }
+            function block(i, msg) {
+                commands.splice(i, 1);
+                if (typeof toastr !== 'undefined' && toastr.warning) toastr.warning(msg, '状态栏');
+            }
+            for (var i = commands.length - 1; i >= 0; i--) {
+                var cmd = commands[i];
+                if (!cmd || !cmd.args || !cmd.args.length) continue;
+                var segs = stripRoot(pathToSegments(cmd.args[0]));
+                var root = segs[0];
+                if (root !== '产业' && root !== '家族') continue;
+                if (cmd.type === 'move') { block(i, '⚠️ 已拦截 AI 对 ' + root + ' 的 move 操作'); continue; }
+                if (root === '产业') {
+                    if (cmd.type === 'insert' && segs.length === 2) continue;   // 新增产业：放行
+                    if (cmd.type === 'replace' && segs.length >= 3) {
+                        if (segs[2] === '上次结算') { block(i, '⛔ 产业的 上次结算 由结算脚本托管，AI 禁止修改'); continue; }
+                        continue;                                               // 子字段修改：放行
+                    }
+                    block(i, '⚠️ 已拦截 AI 对 产业「' + (segs[1] || '') + '」的 ' + cmd.type + ' 操作（仅允许新增产业或修改其子字段；停业请 replace 状态）');
+                    continue;
+                }
+                // —— 家族 ——
+                if (segs.length === 2 && cmd.type === 'replace') continue;      // /家族/谱系说明
+                if (segs[1] !== '成员' || segs.length < 3) { block(i, '⚠️ 已拦截 AI 对 家族 的非法操作（成员按 /家族/成员/姓名 路径写入）'); continue; }
+                var name = segs[2];
+                var member = (stat && stat.家族 && stat.家族.成员) ? stat.家族.成员[name] : null;
+                if (cmd.type === 'insert' && segs.length === 3) {
+                    // 整条新成员：无出生年月日但有年龄 → 自动换算（与主要NPC收录逻辑一致）
+                    var val = cmd.args[1];
+                    if (val && typeof val === 'object' && !val.出生年月日 && val.年龄) {
+                        var bv = famBirthFromAge(val.年龄, _.get(stat, '世界.日期', '') || '');
+                        if (bv) { val.出生年月日 = bv; delete val.年龄; }
+                    }
+                    continue;
+                }
+                if (segs.length >= 4) {
+                    var field = segs[3];
+                    if (field === '培养计划' || field === '培养记录') { block(i, '⛔ 培养计划/培养记录 由玩家在状态栏设置、结算脚本维护，AI 禁止修改'); continue; }
+                    if (field === '出生年月日') {
+                        if (cmd.type === 'replace' && member && member.出生年月日) { block(i, '⛔ 已拦截对家族成员「' + name + '」出生年月日的修改：一经确定不改'); continue; }
+                        if (cmd.type !== 'replace') { block(i, '⛔ 已拦截 AI 对家族成员「' + name + '」出生年月日的 ' + cmd.type + ' 操作'); continue; }
+                        continue;                                               // 首次补写：放行
+                    }
+                    if (field === '年龄') {
+                        if (member && member.出生年月日) { block(i, '⛔ 家族成员「' + name + '」年龄按出生日期自动计算，AI 禁止改写'); continue; }
+                        var bva = famBirthFromAge(cmd.args[1], _.get(stat, '世界.日期', '') || '');
+                        if (bva) { cmd.type = 'replace'; cmd.args[0] = '家族.成员.' + name + '.出生年月日'; cmd.args[1] = bva; }
+                        continue;
+                    }
+                    if (cmd.type === 'replace') continue;                       // 子字段修改：放行
+                    block(i, '⚠️ 已拦截 AI 对家族成员「' + name + '」子字段的 ' + cmd.type + ' 操作');
+                    continue;
+                }
+                block(i, '⚠️ 已拦截 AI 对 家族成员「' + name + '」的 ' + cmd.type + ' 操作（死亡/失踪用 replace 存亡，禁删成员）');
             }
         }
 
@@ -6731,6 +6815,8 @@ var TRT_TECH = {
             eventOn(Mvu.events.COMMAND_PARSED, filterLockedCompanionCommands);
             // 追踪记录硬拦截：只允许 insert 追加流水，禁止 replace/remove/add/move 覆盖或删除
             eventOn(Mvu.events.COMMAND_PARSED, filterTrackRecordCommands);
+            // 家族/产业写入守卫：产业禁删/禁改结算锚点；家族成员禁删/出生年月日禁改/培养计划玩家托管
+            eventOn(Mvu.events.COMMAND_PARSED, filterFamilyIndustryCommands);
             // 名字段规范化：主要NPC/同伴/契约兽/召唤物 名字写错（_/・/拆段）自动修正并与现有键对齐（防同名分叉/幽灵条目）
             eventOn(Mvu.events.COMMAND_PARSED, normalizeNpcNameCommands);
             // 出生年月日/年龄只读：出生年月日一经确定不改；年龄按当前日期自动计算（AI 禁写）
@@ -6755,6 +6841,8 @@ var TRT_TECH = {
                 $this.addClass('active');
                 $wrapper.find('#' + tabId).addClass('active');
                 if (tabId === 'tab-track') { if (typeof renderTrackTab === 'function') renderTrackTab(); }
+                if (tabId === 'tab-family') { if (typeof renderFamilyTab === 'function') renderFamilyTab(); }
+                if (tabId === 'tab-industry') { if (typeof renderIndustryTab === 'function') renderIndustryTab(); }
             });
 
             // 物品栏折叠事件（主角物品栏 + 同伴物品栏）
@@ -6902,6 +6990,310 @@ var TRT_TECH = {
                     Mvu.replaceMvuData(mvuD, { type: 'message', message_id: 'latest' });
                 } catch (e) {}
             }
+
+            // ===== 👪 家族页签 + 🏪 产业页签：谱系展示/儿女培养计划 + 产业收益管理 =====
+            // 数据源：stat_data.家族 = { 谱系说明, 成员: { 姓名: {称谓,世代,出生年月日,存亡,资质,魔力回路,等阶,基础属性,培养计划,培养记录,...} } }
+            //         stat_data.产业 = { 产业名: { 类型,结算周期,每期收益,上次结算,状态,购入价,... } }
+            // 培养计划/产业编辑由玩家在此直接写变量（message+chat 双写，仿 trtWriteTerritory）；
+            // 周期成长与收益补算由「产业结算脚本」在 VARIABLE_UPDATE_ENDED 自动执行（本次只改显示与计划）。
+            function famReadStatData() {
+                try {
+                    var mvuD = (window.Mvu && Mvu.getMvuData) ? Mvu.getMvuData({ type: 'message', message_id: 'latest' }) : null;
+                    if (mvuD && _.isPlainObject(mvuD.stat_data) && Object.keys(mvuD.stat_data).length > 0) return mvuD.stat_data;
+                } catch (e) {}
+                var all = (typeof getAllVariables === 'function') ? getAllVariables() : {};
+                return (_.isPlainObject(all) && _.isPlainObject(all.stat_data)) ? all.stat_data : {};
+            }
+            // 统一写入：基于最新楼层 stat_data 修改，回写 message(latest)+chat 两级（保证渲染与 AI 更新同源）
+            async function famWriteStatData(mutate) {
+                if (typeof Mvu === 'undefined') return;
+                var mvuData = null;
+                try { mvuData = Mvu.getMvuData({ type: 'message', message_id: 'latest' }); } catch (e) { mvuData = null; }
+                var hasStat = mvuData && _.isPlainObject(_.get(mvuData, 'stat_data')) && Object.keys(mvuData.stat_data).length > 0;
+                if (!hasStat) {
+                    var all = (typeof getAllVariables === 'function') ? getAllVariables() : {};
+                    var base = _.isPlainObject(all) ? all : {};
+                    mvuData = { initialized_lorebooks: _.get(mvuData, 'initialized_lorebooks', {}), stat_data: _.get(base, 'stat_data', {}) || {} };
+                }
+                if (!mvuData.stat_data) mvuData.stat_data = {};
+                mutate(mvuData.stat_data);
+                await Mvu.replaceMvuData(mvuData, { type: 'message', message_id: 'latest' });
+                try {
+                    if (typeof updateVariablesWith === 'function') {
+                        updateVariablesWith(function(variables) {
+                            if (!variables || typeof variables !== 'object') variables = {};
+                            variables.stat_data = mvuData.stat_data;
+                            return variables;
+                        }, { type: 'chat' });
+                    }
+                } catch (e) { console.warn('[家族产业] chat 级变量同步失败:', e); }
+            }
+            // '圣光历1497年3月' → 连续月索引；无法解析返回 null
+            function famParseMonths(str) {
+                var m = /圣光历\s*(\d+)\s*年(?:\s*(\d+)\s*月)?/.exec(String(str || ''));
+                if (!m) return null;
+                var y = parseInt(m[1], 10), mo = m[2] !== undefined ? parseInt(m[2], 10) : 1;
+                if (!isFinite(y) || !isFinite(mo) || mo < 1 || mo > 12) return null;
+                return y * 12 + (mo - 1);
+            }
+            function famMonthsToStr(idx) {
+                return '圣光历' + Math.floor(idx / 12) + '年' + (idx % 12 + 1) + '月';
+            }
+            function famCurMonthIndex() {
+                var all = (typeof getAllVariables === 'function') ? getAllVariables() : {};
+                return famParseMonths(_.get(all, 'stat_data.世界.日期', ''));
+            }
+            var FAMILY_GROUPS = [
+                { key: '祖辈', titles: ['祖父', '祖母', '外祖父', '外祖母'] },
+                { key: '父母辈', titles: ['父亲', '母亲'] },
+                { key: '同辈', titles: ['兄', '姐', '弟', '妹', '配偶'] },
+                { key: '子辈', titles: ['儿子', '女儿'] },
+                { key: '亲戚及其他', titles: ['亲戚', '其他'] }
+            ];
+            function famGroupOf(m) {
+                var gen = String(m.世代 || '');
+                for (var gi = 0; gi < FAMILY_GROUPS.length; gi++) { if (gen === FAMILY_GROUPS[gi].key) return FAMILY_GROUPS[gi].key; }
+                var t = String(m.称谓 || '');
+                for (var gj = 0; gj < FAMILY_GROUPS.length; gj++) { if (FAMILY_GROUPS[gj].titles.indexOf(t) !== -1) return FAMILY_GROUPS[gj].key; }
+                return '亲戚及其他';
+            }
+            function famStatusBadge(alive) {
+                if (alive === '已故') return '<span style="font-size:10px;color:#fff;background:#7f8c8d;border-radius:8px;padding:1px 6px;">已故</span>';
+                if (alive === '失踪') return '<span style="font-size:10px;color:#fff;background:#e67e22;border-radius:8px;padding:1px 6px;">失踪</span>';
+                if (alive === '已独立') return '<span style="font-size:10px;color:#fff;background:#2980b9;border-radius:8px;padding:1px 6px;">已独立</span>';
+                return '<span style="font-size:10px;color:#fff;background:#27ae60;border-radius:8px;padding:1px 6px;">在世</span>';
+            }
+            function readFamilyData() {
+                var f = famReadStatData().家族;
+                if (!f || typeof f !== 'object') f = {};
+                if (!f.成员 || typeof f.成员 !== 'object') f.成员 = {};
+                return f;
+            }
+            function readIndustryData() {
+                var d = famReadStatData().产业;
+                if (!d || typeof d !== 'object') d = {};
+                return d;
+            }
+            function renderFamilyTab() {
+                var box = document.getElementById('family-inner'); if (!box) return;
+                var fam = readFamilyData();
+                var members = fam.成员 || {};
+                var names = Object.keys(members);
+                var head = '<div style="font-size:11px;color:#4a3623;margin-bottom:6px;">' + (safeStr(fam.谱系说明) ? escapeAttr(fam.谱系说明) : '尚未建立家族档案。AI 会在 结婚/生育/认亲 等剧情中按「变量更新规则·家族」收录成员。') + '</div>';
+                if (!names.length) {
+                    box.innerHTML = head + '<div class="jrpg-list-empty">暂无家族成员。剧情中确立了父母/配偶/儿女等至亲后，AI 会自动写入 家族.成员，此处按谱系展示。</div>';
+                    return;
+                }
+                var html = head;
+                FAMILY_GROUPS.forEach(function(g) {
+                    var inGroup = names.filter(function(n) { return famGroupOf(members[n] || {}) === g.key; });
+                    if (!inGroup.length) return;
+                    html += '<div style="font-size:11px;font-weight:bold;color:#5a4430;margin:8px 0 4px;">— ' + g.key + ' —</div>';
+                    inGroup.forEach(function(name) {
+                        var m = members[name] || {};
+                        var tier = displayTier(m.等阶, null);
+                        var age = calcActorAge(m);
+                        var fav = _.clamp(parseInt(m.好感度, 10) || 0, -100, 100);
+                        var favColor = fav > 50 ? '#27ae60' : (fav > 0 ? '#f39c12' : '#7f8c8d');
+                        var plan = (m.培养计划 && typeof m.培养计划 === 'object') ? m.培养计划 : {};
+                        var training = plan.方向 ? '<span style="color:#8e44ad;">📚 ' + escapeAttr(plan.方向) + '(' + formatCurrency(parseInt(plan.每期投入, 10) || 0) + '/月)</span>' : '';
+                        html += '<div class="jrpg-comp-card jrpg-family-card" data-fam-name="' + escapeAttr(name) + '">';
+                        html += '<div class="jrpg-comp-header-wrapper" style="border-bottom:none;margin-bottom:0;padding-bottom:0;">';
+                        html += '<img class="jrpg-comp-avatar" src="' + getAvatarUrl(name) + '">';
+                        html += '<div class="jrpg-comp-header-info">';
+                        html += '<div class="jrpg-comp-header-top"><div><span class="jrpg-comp-name">' + escapeAttr(name) + '</span> <span style="font-size:10px;color:#8b6b4a;">[' + escapeAttr(m.称谓 || '其他') + ']</span> ' + famStatusBadge(m.存亡) + ' <span class="jrpg-comp-tier ' + getCompTierClass(tier) + '">' + tier + '</span></div></div>';
+                        html += '<div class="jrpg-comp-meta">' + (age !== null && age !== undefined ? age + '岁 · ' : '') + (safeStr(m.种族) ? safeStr(m.种族) + ' · ' : '') + (safeStr(m.身份, '—')) + '</div>';
+                        html += '<div style="display:flex;gap:8px;font-size:10px;margin-top:4px;flex-wrap:wrap;">';
+                        html += '<span style="color:#4a3623;">🧬 ' + escapeAttr(_.get(m, '资质.等级', '—')) + '</span>';
+                        html += '<span style="color:#2980b9;">✦ ' + escapeAttr(_.get(m, '魔力回路.品阶', '无回路')) + '</span>';
+                        html += '<span style="color:' + favColor + ';">♥ ' + fav + '</span>';
+                        if (training) html += training;
+                        html += '</div>';
+                        html += '</div></div>';
+                        html += '<div class="jrpg-comp-click-hint">🔍 点击查看详情与培养</div>';
+                        html += '</div>';
+                    });
+                });
+                box.innerHTML = html;
+            }
+            function openFamilyDetail(name) {
+                var fam = readFamilyData();
+                var m = fam.成员 ? fam.成员[name] : null;
+                if (!m) { toastr.warning('家族成员不存在：' + name); return; }
+                var tier = displayTier(m.等阶, null);
+                var age = calcActorAge(m);
+                var html = '';
+                html += '<div style="text-align:center;margin-bottom:8px;"><img class="jrpg-comp-avatar" src="' + getAvatarUrl(name) + '" style="width:56px;height:56px;"><div class="jrpg-comp-name" style="font-size:15px;">' + escapeAttr(name) + ' <span style="font-size:11px;color:#8b6b4a;">[' + escapeAttr(m.称谓 || '其他') + ' · ' + escapeAttr(m.世代 || famGroupOf(m)) + ']</span> ' + famStatusBadge(m.存亡) + '</div></div>';
+                function row(k, v) { return v ? '<div style="font-size:12px;color:#4a3623;padding:2px 0;"><b style="color:#5a4430;">' + k + '：</b>' + v + '</div>' : ''; }
+                html += '<div style="background:rgba(255,250,240,0.6);border:1px solid #d2b48c;border-radius:6px;padding:8px 10px;margin-bottom:8px;">';
+                html += row('性别', escapeAttr(m.性别 || '')) + row('种族', escapeAttr(m.种族 || '')) + row('年龄', age !== null && age !== undefined ? age + '岁（' + escapeAttr(m.出生年月日 || '出生日期未记录') + '）' : escapeAttr(m.出生年月日 || ''));
+                html += row('身份', escapeAttr(m.身份 || '')) + row('所在地', escapeAttr(m.所在地 || '')) + row('描述', escapeAttr(m.描述 || ''));
+                html += row('资质', escapeAttr(_.get(m, '资质.等级', '—')) + (_.get(m, '资质.描述') ? '（' + escapeAttr(_.get(m, '资质.描述')) + '，经验效率' + (_.get(m, '资质.经验获取效率', 100)) + '%）' : ''));
+                html += row('魔力回路', escapeAttr(_.get(m, '魔力回路.品阶', '无回路')) + (_.get(m, '魔力回路.描述') ? '（' + escapeAttr(_.get(m, '魔力回路.描述')) + '）' : ''));
+                html += row('位阶', tier);
+                html += '</div>';
+                // 基础属性
+                var attrs = (m.基础属性 && typeof m.基础属性 === 'object') ? m.基础属性 : {};
+                html += '<div style="font-size:12px;font-weight:bold;color:#5a4430;margin:6px 0 4px;">基础属性</div><div class="jrpg-stats-grid">';
+                ['力量', '敏捷', '体质', '智力', '感知', '魅力'].forEach(function(a) {
+                    html += '<div class="jrpg-stat-item"><span>' + a + '</span><span>' + (parseInt(attrs[a], 10) || 10) + '</span></div>';
+                });
+                html += '</div>';
+                // 培养计划编辑
+                var plan = (m.培养计划 && typeof m.培养计划 === 'object') ? m.培养计划 : {};
+                var dirs = ['', '武技', '魔法', '学识', '商业', '骑术', '信仰', '综合'];
+                html += '<div style="font-size:12px;font-weight:bold;color:#5a4430;margin:10px 0 4px;">📚 培养计划 <span style="font-weight:normal;font-size:10px;color:#8b6b4a;">（玩家设置，AI 不可改；产业结算脚本每月按投入扣款并成长）</span></div>';
+                html += '<div style="background:rgba(255,250,240,0.6);border:1px solid #d2b48c;border-radius:6px;padding:8px 10px;">';
+                html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:#4a3623;">';
+                html += '方向 <select id="fam-train-dir" style="padding:2px 4px;">';
+                dirs.forEach(function(d) {
+                    var label = d === '' ? '（不培养）' : d;
+                    html += '<option value="' + d + '"' + ((plan.方向 || '') === d ? ' selected' : '') + '>' + label + '</option>';
+                });
+                html += '</select>';
+                html += '投入 <input id="fam-train-invest" type="number" min="0" step="50" value="' + (parseInt(plan.每期投入, 10) || 0) + '" style="width:80px;padding:2px 4px;"> 铜盾/月';
+                html += '</div>';
+                html += '<div style="font-size:10px;color:#7f8c8d;margin-top:4px;">成长规则：≥100铜盾=1点/月，≥500=2点/月，≥2000=4点/月；每满12点对应属性+1（按方向轮转：武技 力量/敏捷/体质 · 魔法 智力/感知 · 学识 智力/感知/魅力 · 商业 魅力/感知/智力 · 骑术 敏捷/体质/力量 · 信仰 感知/魅力/体质 · 综合 六维）。当前进度 ' + (parseInt(plan.成长进度, 10) || 0) + '/12。资金不足时培养停滞。</div>';
+                html += '<div style="margin-top:6px;"><button id="btn-save-training" class="jrpg-btn-sm" style="padding:3px 10px;font-size:11px;background:#8e44ad;color:#fff;border:1px solid #8e44ad;border-radius:4px;">💾 保存培养计划</button></div>';
+                html += '</div>';
+                // 培养记录
+                var recs = Array.isArray(m.培养记录) ? m.培养记录 : [];
+                html += '<div style="font-size:12px;font-weight:bold;color:#5a4430;margin:10px 0 4px;">📜 培养记录（' + recs.length + '）</div>';
+                if (!recs.length) {
+                    html += '<div style="font-size:11px;color:#7f8c8d;">暂无记录。设置培养计划后，产业结算脚本会按月记录成长。</div>';
+                } else {
+                    html += '<div style="max-height:140px;overflow:auto;border:1px dashed #d2b48c;border-radius:6px;padding:4px 8px;">';
+                    recs.slice().reverse().forEach(function(r) {
+                        html += '<div style="border-bottom:1px dashed #e8d9c0;padding:3px 0;font-size:11px;color:#4a3623;"><span style="color:#8b6b4a;font-size:10px;">' + escapeAttr(r.时间 || '—') + '</span>　' + escapeAttr(r.内容 || '') + (r.效果 ? '　<b style="color:#27ae60;">' + escapeAttr(r.效果) + '</b>' : '') + '</div>';
+                    });
+                    html += '</div>';
+                }
+                $('#family-detail-body').data('fam-name', name).html(html);
+                $('#family-detail-modal').css('display', 'flex');
+            }
+            function renderIndustryTab() {
+                var box = document.getElementById('industry-inner'); if (!box) return;
+                var inds = readIndustryData();
+                var names = Object.keys(inds);
+                var cur = famCurMonthIndex();
+                var totalMonthly = 0, activeCount = 0;
+                names.forEach(function(n) {
+                    var d = inds[n] || {};
+                    if (d.状态 && d.状态 !== '运营中') return;
+                    var inc = parseInt(d.每期收益, 10) || 0;
+                    totalMonthly += (d.结算周期 === '每季度') ? Math.round(inc / 3) : inc;
+                    activeCount++;
+                });
+                var html = '<div style="background:rgba(255,250,240,0.6);border:1px solid #d2b48c;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#4a3623;">';
+                html += '💰 预估月净收益：<b style="color:' + (totalMonthly >= 0 ? '#27ae60' : '#c0392b') + ';">' + (totalMonthly >= 0 ? '+' : '') + formatCurrency(Math.abs(totalMonthly)) + (totalMonthly >= 0 ? '' : '（亏）') + '</b>　·　运营中 ' + activeCount + ' / 共 ' + names.length + ' 处';
+                html += '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">';
+                html += '<button id="btn-industry-settle" class="jrpg-btn-sm" style="padding:3px 10px;font-size:11px;background:#27ae60;color:#fff;border:1px solid #27ae60;border-radius:4px;">🧮 立即补结算</button>';
+                html += '<button id="btn-industry-add" class="jrpg-btn-sm" style="padding:3px 10px;font-size:11px;background:#2980b9;color:#fff;border:1px solid #2980b9;border-radius:4px;">➕ 新增产业</button>';
+                html += '</div></div>';
+                if (!names.length) {
+                    box.innerHTML = html + '<div class="jrpg-list-empty">暂无产业。剧情中购置/获得房产、田地、商铺、股权等资产时，AI 会按「变量更新规则·产业结算」写入 产业 容器；收益由结算脚本按月/季度自动入账并记入追踪记录。</div>';
+                    return;
+                }
+                names.forEach(function(name) {
+                    var d = inds[name] || {};
+                    var inc = parseInt(d.每期收益, 10) || 0;
+                    var cycle = d.结算周期 === '每季度' ? '每季度' : '每月';
+                    var status = d.状态 || '运营中';
+                    var statusColor = status === '运营中' ? '#27ae60' : (status === '升级中' ? '#e67e22' : '#7f8c8d');
+                    var lastStr = String(d.上次结算 || '');
+                    var nextTxt = '—';
+                    if (lastStr && cur !== null) {
+                        var last = famParseMonths(lastStr);
+                        if (last !== null) {
+                            var period = cycle === '每季度' ? 3 : 1;
+                            var next = last + period;
+                            nextTxt = next <= cur ? '本期应结（可立即补结算）' : '圣光历' + Math.floor(next / 12) + '年' + (next % 12 + 1) + '月（还有' + (next - cur) + '个月）';
+                        }
+                    }
+                    html += '<div class="jrpg-comp-card" style="cursor:default;">';
+                    html += '<div class="jrpg-comp-header-wrapper" style="border-bottom:none;margin-bottom:0;padding-bottom:0;">';
+                    html += '<div class="jrpg-comp-header-info">';
+                    html += '<div class="jrpg-comp-header-top"><div><span class="jrpg-comp-name">' + escapeAttr(name) + '</span> <span style="font-size:10px;color:#8b6b4a;">[' + escapeAttr(d.类型 || '其他') + ']</span> <span style="font-size:10px;color:#fff;background:' + statusColor + ';border-radius:8px;padding:1px 6px;">' + escapeAttr(status) + '</span></div>';
+                    html += '<button class="jrpg-industry-toggle jrpg-btn-sm" data-ind="' + escapeAttr(name) + '" style="padding:2px 8px;font-size:10px;background:' + (status === '运营中' ? '#e67e22' : '#27ae60') + ';color:#fff;border:1px solid ' + (status === '运营中' ? '#e67e22' : '#27ae60') + ';border-radius:4px;">' + (status === '运营中' ? '⏸ 停业' : '▶ 复业') + '</button></div>';
+                    html += '<div class="jrpg-comp-meta">' + (safeStr(d.位置) ? '📍 ' + escapeAttr(d.位置) + ' · ' : '') + (safeStr(d.购入价) ? '购入 ' + escapeAttr(String(d.购入价)) + ' · ' : '') + escapeAttr(cycle) + '</div>';
+                    html += '<div style="font-size:11px;color:#4a3623;margin-top:4px;">💵 每期收益：<b style="color:' + (inc >= 0 ? '#27ae60' : '#c0392b') + ';">' + (inc >= 0 ? '+' : '') + formatCurrency(Math.abs(inc)) + '</b>' + (inc < 0 ? '（净支出）' : '') + '　·　上次结算：' + escapeAttr(lastStr || '未结算（首次从次期起算）') + '</div>';
+                    html += '<div style="font-size:10px;color:#7f8c8d;margin-top:2px;">📅 下次结算期：' + escapeAttr(nextTxt) + (safeStr(d.描述) ? '　·　' + escapeAttr(d.描述) : '') + '</div>';
+                    html += '</div></div></div>';
+                });
+                html += '<div style="font-size:10px;color:#7f8c8d;margin-top:6px;">结算脚本监听变量更新自动补算（以每处产业的 上次结算 为锚，跨月/跨季一次补齐）；停业/升级中不产生收益但锚点照常推进。手动补结算等同当前月份即时入账。</div>';
+                box.innerHTML = html;
+            }
+            // —— 家族/产业页签事件（jQuery 委托） ——
+            $('.jrpg-status-wrapper').on('click', '.jrpg-family-card', function() {
+                openFamilyDetail($(this).data('fam-name'));
+            });
+            $('.jrpg-status-wrapper').on('click', '#family-detail-close', function() {
+                $('#family-detail-modal').css('display', 'none');
+            });
+            $('#family-detail-modal').on('click', function(e) {
+                if (e.target === this) $(this).css('display', 'none');
+            });
+            $('.jrpg-status-wrapper').on('click', '#btn-save-training', function() {
+                var name = $('#family-detail-body').data('fam-name');
+                if (!name) return;
+                var dir = $('#fam-train-dir').val() || '';
+                var invest = Math.max(0, parseInt($('#fam-train-invest').val(), 10) || 0);
+                Promise.resolve(famWriteStatData(function(stat) {
+                    stat.家族 = stat.家族 || {};
+                    stat.家族.成员 = stat.家族.成员 || {};
+                    var m = stat.家族.成员[name];
+                    if (!m) return;
+                    var oldDir = (m.培养计划 && typeof m.培养计划 === 'object') ? (m.培养计划.方向 || '') : '';
+                    m.培养计划 = m.培养计划 && typeof m.培养计划 === 'object' ? m.培养计划 : {};
+                    m.培养计划.方向 = dir;
+                    m.培养计划.每期投入 = dir ? invest : 0;
+                    if (!dir || dir !== oldDir) {
+                        // 停止培养或更换方向：重置结算锚点与进度（新周期从当前月起算）
+                        m.培养计划.上次结算 = '';
+                        m.培养计划.成长进度 = 0;
+                    }
+                })).then(function() {
+                    toastr.success(dir ? ('培养计划已保存：' + name + ' → ' + dir + '（' + invest + '铜盾/月）') : ('已停止培养：' + name), '家族');
+                    renderFamilyTab();
+                    openFamilyDetail(name);
+                }).catch(function(e) { toastr.error('保存失败：' + (e && e.message ? e.message : e)); });
+            });
+            $('.jrpg-status-wrapper').on('click', '#btn-industry-settle', function() {
+                try {
+                    Promise.resolve(eventEmit('产业结算_手动处理')).then(function() {
+                        setTimeout(function() { renderIndustryTab(); if (typeof renderTrackTab === 'function') renderTrackTab(); }, 800);
+                    });
+                    toastr.info('补结算指令已发送（产业结算脚本执行中）');
+                } catch (e) { toastr.error('发送失败：' + e.message); }
+            });
+            $('.jrpg-status-wrapper').on('click', '#btn-industry-add', function() {
+                var name = prompt('产业名称（如：石桥镇面包坊）：');
+                if (!name) return;
+                var type = prompt('产业类型（房产/田地/商铺/工坊/矿场/股权/船运/其他）：', '商铺');
+                if (!type) return;
+                var income = parseInt(prompt('每期收益（铜盾/期，可为负代表净维护费）：', '0'), 10) || 0;
+                var cycle = prompt('结算周期（每月/每季度）：', '每月') === '每季度' ? '每季度' : '每月';
+                var loc = prompt('所在位置（可空）：', '') || '';
+                var desc = prompt('一句话描述（可空）：', '') || '';
+                Promise.resolve(famWriteStatData(function(stat) {
+                    stat.产业 = stat.产业 || {};
+                    stat.产业[name] = {
+                        类型: type, 位置: loc, 描述: desc, 结算周期: cycle, 每期收益: income,
+                        上次结算: '', 状态: '运营中', 购入价: 0, 其他说明: ''
+                    };
+                })).then(function() {
+                    renderIndustryTab();
+                    toastr.success('产业已登记：' + name + '（首次结算从次期起算）');
+                }).catch(function(e) { toastr.error('登记失败：' + (e && e.message ? e.message : e)); });
+            });
+            $('.jrpg-status-wrapper').on('click', '.jrpg-industry-toggle', function() {
+                var name = $(this).data('ind');
+                Promise.resolve(famWriteStatData(function(stat) {
+                    var ind = stat.产业 && stat.产业[name];
+                    if (!ind) return;
+                    ind.状态 = ind.状态 === '运营中' ? '停业' : '运营中';
+                })).then(function() { renderIndustryTab(); });
+            });
             // 同伴物品栏整体折叠事件
             $('.jrpg-status-wrapper').on('click', '.jrpg-comp-inv-toggle', function() {
                 var compName = $(this).data('comp');
@@ -7516,7 +7908,7 @@ var TRT_TECH = {
             <div><div class="jrpg-box"><div class="jrpg-box-title">基础属性</div><div class="jrpg-stats-grid"><div class="jrpg-stat-item"><span>力量</span><span id="val-str">10</span></div><div class="jrpg-stat-item"><span>敏捷</span><span id="val-dex">10</span></div><div class="jrpg-stat-item"><span>体质</span><span id="val-con">10</span></div><div class="jrpg-stat-item"><span>智力</span><span id="val-int">10</span></div><div class="jrpg-stat-item"><span>感知</span><span id="val-wis">10</span></div><div class="jrpg-stat-item"><span>魅力</span><span id="val-cha">10</span></div></div><div class="jrpg-level-row" id="level-info-row"></div></div></div>
             <div><div class="jrpg-box"><div class="jrpg-box-title">职业信息</div><div class="jrpg-list" id="list-classes"><div class="jrpg-list-empty">暂无职业</div></div></div></div>
         </div>
-        <div class="jrpg-tabs"><button class="jrpg-tab-btn active" data-tab="tab-basic">状态</button><button class="jrpg-tab-btn" data-tab="tab-assets">能力</button><button class="jrpg-tab-btn" data-tab="tab-quests">任务</button><button class="jrpg-tab-btn" data-tab="tab-knowledge">见闻</button><button class="jrpg-tab-btn" data-tab="tab-party">同伴</button><button class="jrpg-tab-btn" data-tab="tab-advanced">超凡</button><button class="jrpg-tab-btn" data-tab="tab-skilltree">技能树</button><button class="jrpg-tab-btn" data-tab="tab-variant">变体技能</button><button class="jrpg-tab-btn" data-tab="tab-alloc">升级分配</button><button class="jrpg-tab-btn" data-tab="tab-track">🧺 追踪记录</button><button class="jrpg-tab-btn" data-tab="tab-territory">🏰 领地</button></div>
+        <div class="jrpg-tabs"><button class="jrpg-tab-btn active" data-tab="tab-basic">状态</button><button class="jrpg-tab-btn" data-tab="tab-assets">能力</button><button class="jrpg-tab-btn" data-tab="tab-quests">任务</button><button class="jrpg-tab-btn" data-tab="tab-knowledge">见闻</button><button class="jrpg-tab-btn" data-tab="tab-party">同伴</button><button class="jrpg-tab-btn" data-tab="tab-advanced">超凡</button><button class="jrpg-tab-btn" data-tab="tab-skilltree">技能树</button><button class="jrpg-tab-btn" data-tab="tab-variant">变体技能</button><button class="jrpg-tab-btn" data-tab="tab-alloc">升级分配</button><button class="jrpg-tab-btn" data-tab="tab-track">🧺 追踪记录</button><button class="jrpg-tab-btn" data-tab="tab-family">👪 家族</button><button class="jrpg-tab-btn" data-tab="tab-industry">🏪 产业</button><button class="jrpg-tab-btn" data-tab="tab-territory">🏰 领地</button></div>
 
         <div id="tab-basic" class="jrpg-tab-content active"><div class="jrpg-grid-2col"><div><div class="jrpg-box"><div class="jrpg-box-title">自身状态 <button class="edit-add-btn" data-add-path="主角.基础状态.自身状态" title="修改模式下新增状态">➕ 新增</button></div><div class="jrpg-list" id="list-status"><div class="jrpg-list-empty">无异常状态</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">🙏 信仰</div><div class="jrpg-list" id="list-faith"><div class="jrpg-list-empty">未信仰神明</div></div></div></div><div><div class="jrpg-box"><div class="jrpg-box-title">种族</div><div class="jrpg-list" id="list-race"><div class="jrpg-list-empty">—</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">魔力回路</div><div class="jrpg-list" id="list-circuit"><div class="jrpg-list-empty">—</div></div></div></div></div></div>
         <div id="tab-assets" class="jrpg-tab-content"><div class="jrpg-grid-2col"><div><div class="jrpg-box"><div class="jrpg-box-title">装备栏</div><div id="list-equipment"><div class="jrpg-list-empty">加载中…</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">🎒 物品栏 <button class="edit-add-btn" data-add-path="主角.资产与能力.物品栏" title="修改模式下新增物品">➕ 新增</button></div><div class="jrpg-list" id="list-inventory" style="max-height: 350px;"><div class="jrpg-list-empty">空无一物</div></div></div></div><div><div class="jrpg-box"><div class="jrpg-box-title">⬆️ 技能升级</div><div style="margin-top:4px;"><button class="jrpg-btn-sm jrpg-skill-up-btn" id="skill-upgrade-toggle" style="background:#e67e22;color:#fff;border:2px solid #e67e22;border-radius:4px;padding:4px 12px;font-size:12px;">技能升级：关</button></div><div id="skill-upgrade-bar" style="display:none;margin-top:6px;"></div></div><div class="jrpg-box"><div class="jrpg-box-title">⚔️ 角色技能</div><div class="jrpg-list" id="list-skills"><div class="jrpg-list-empty">未掌握技能</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">✦ 魔法栏</div><div class="jrpg-list" id="list-magic"><div class="jrpg-list-empty">未掌握魔法</div></div></div><div class="jrpg-box"><div class="jrpg-box-title">✧ 神术栏</div><div class="jrpg-list" id="list-divine"><div class="jrpg-list-empty">未信仰神明</div></div></div></div></div></div>
@@ -7605,6 +7997,33 @@ var TRT_TECH = {
             <div class='jrpg-box'>
                 <div class='jrpg-box-title'>🏰 领地建设 <span style='font-weight:normal;font-size:11px;color:#8b6b4a;'>（统治玩法：人口/军队/科技/派系/资源/外交/经济）</span></div>
                 <div id='territory-inner'><div class='jrpg-list-empty'>加载中…</div></div>
+            </div>
+        </div>
+
+        <!-- 家族：谱系展示 + 儿女培养（AI 按「变量更新规则·家族」写入 家族.成员；培养计划由玩家在此设置，产业结算脚本按月成长扣款） -->
+        <div id="tab-family" class="jrpg-tab-content">
+            <div class="jrpg-box">
+                <div class="jrpg-box-title">👪 家族谱系 <span style="font-weight:normal;font-size:11px;color:#8b6b4a;">（父母/祖辈/兄弟姐妹/配偶/儿女等至亲，独立于主要NPC；点击成员卡查看详情与培养）</span></div>
+                <div id="family-inner"><div class="jrpg-list-empty">加载中…</div></div>
+            </div>
+        </div>
+
+        <!-- 家族成员详情模态框（谱系信息 + 培养计划设置 + 培养记录） -->
+        <div id="family-detail-modal" class="jrpg-modal-overlay" style="display:none;">
+            <div class="jrpg-modal-content" style="max-width:520px;">
+                <div class="jrpg-modal-header">
+                    <span id="family-detail-title">成员详情</span>
+                    <button id="family-detail-close" class="jrpg-modal-close">✕</button>
+                </div>
+                <div id="family-detail-body" style="padding:10px 14px; max-height:60vh; overflow:auto;"></div>
+            </div>
+        </div>
+
+        <!-- 产业：资产收益（房产/田地/商铺/股权等；产业结算脚本按月/季度自动入账并写追踪记录） -->
+        <div id="tab-industry" class="jrpg-tab-content">
+            <div class="jrpg-box">
+                <div class="jrpg-box-title">🏪 产业经营 <span style="font-weight:normal;font-size:11px;color:#8b6b4a;">（收益由「产业结算脚本」按周期自动补算入账；也可手动补结算）</span></div>
+                <div id="industry-inner"><div class="jrpg-list-empty">加载中…</div></div>
             </div>
         </div>
 

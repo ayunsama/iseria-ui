@@ -112,6 +112,48 @@ eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, (newVars, oldVars) => {
     changes.push(`英灵状态：${oldSpiritStatus} → ${newSpiritStatus}`);
   }
 
+  // ---------- 家族 ----------
+  const oldFamily = _.get(oldData, '家族.成员', {});
+  const newFamily = _.get(newData, '家族.成员', {});
+  const familyAdded = Object.keys(newFamily).filter(n => !(n in oldFamily));
+  const familyRemoved = Object.keys(oldFamily).filter(n => !(n in newFamily));
+  if (familyAdded.length > 0) changes.push(`家族新增成员：${familyAdded.join('、')}`);
+  if (familyRemoved.length > 0) changes.push(`家族成员移除：${familyRemoved.join('、')}`);
+  for (const name of Object.keys(newFamily)) {
+    if (name in oldFamily) {
+      const oldAlive = _.get(oldFamily, `${name}.存亡`, '');
+      const newAlive = _.get(newFamily, `${name}.存亡`, '');
+      if (oldAlive !== newAlive) changes.push(`家族成员「${name}」状态：${oldAlive} → ${newAlive}`);
+      const oldFav = _.get(oldFamily, `${name}.好感度`, 0);
+      const newFav = _.get(newFamily, `${name}.好感度`, 0);
+      if (oldFav !== newFav) changes.push(`家族成员「${name}」好感度：${oldFav} → ${newFav}`);
+      // 培养成长（属性变化只在有实际成长时通知，避免每期空转刷屏）
+      const oldAttrSum = _.get(oldFamily, `${name}.基础属性`, {});
+      const newAttrSum = _.get(newFamily, `${name}.基础属性`, {});
+      if (!_.isEqual(oldAttrSum, newAttrSum)) {
+        const gain = Object.keys(newAttrSum).filter(k => k !== '未分配点数' && typeof newAttrSum[k] === 'number' && newAttrSum[k] !== oldAttrSum[k])
+          .map(k => `${k}+${newAttrSum[k] - oldAttrSum[k]}`).join(' ');
+        if (gain) changes.push(`家族成员「${name}」培养成长：${gain}`);
+      }
+    }
+  }
+
+  // ---------- 产业 ----------
+  diffContainerKeys('产业', '产业');
+  const newIndustries = _.get(newData, '产业', {});
+  for (const name of Object.keys(newIndustries)) {
+    const oldStatus = _.get(oldData, `产业.${name}.状态`, '');
+    const newStatus = _.get(newIndustries, `${name}.状态`, '');
+    if (oldStatus && oldStatus !== newStatus) {
+      changes.push(`产业「${name}」状态：${oldStatus} → ${newStatus}`);
+    }
+    const oldIncome = _.get(oldData, `产业.${name}.每期收益`, 0);
+    const newIncome = _.get(newIndustries, `${name}.每期收益`, 0);
+    if (oldStatus && oldIncome !== newIncome) {
+      changes.push(`产业「${name}」每期收益：${oldIncome}铜盾 → ${newIncome}铜盾`);
+    }
+  }
+
   // 日志
   if (changes.length > 0) {
     console.log(`[变量通知] 本次变量变动摘要：\n${changes.map(c => `  - ${c}`).join('\n')}`);
