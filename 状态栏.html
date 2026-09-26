@@ -7052,10 +7052,15 @@ var TRT_TECH = {
                 var aptMap = { '低劣': 30, '平庸': 45, '普通': 55, '优秀': 70, '卓越': 85, '天才': 100 };
                 var apt = aptMap[_.get(m, '资质.等级', '平庸')] || 45;
                 var f = 1;
-                if (plan.方向 === '魔法') f *= (_.get(m, '魔力回路.品阶', '无回路') !== '无回路') ? 1.1 : 0.8;
-                if (plan.方向 === '武技' || plan.方向 === '骑术') {
-                    var a = (m.基础属性 && typeof m.基础属性 === 'object') ? m.基础属性 : {};
-                    f *= ((parseInt(a.力量, 10) || 10) >= 13 || (parseInt(a.敏捷, 10) || 10) >= 13) ? 1.1 : 1.0;
+                if (plan.方向 === '魔法') {
+                    f *= (_.get(m, '魔力回路.品阶', '无回路') !== '无回路') ? 1.1 : 0.8;
+                } else {
+                    var pools = { '武技': '力量', '信仰': '感知', '学识': '智力', '商业': '魅力', '技艺': '敏捷', '综合': '力量' };
+                    var mainAttr = pools[plan.方向];
+                    if (mainAttr) {
+                        var a = (m.基础属性 && typeof m.基础属性 === 'object') ? m.基础属性 : {};
+                        if ((parseInt(a[mainAttr], 10) || 10) >= 13) f *= 1.1;
+                    }
                 }
                 var age = calcActorAge(m);
                 if (age !== null && age !== undefined) {
@@ -7150,14 +7155,45 @@ var TRT_TECH = {
                 var tier = displayTier(m.等阶, null);
                 var age = calcActorAge(m);
                 var html = '';
-                html += '<div style="text-align:center;margin-bottom:8px;"><img class="jrpg-comp-avatar" src="' + getAvatarUrl(name) + '" style="width:56px;height:56px;"><div class="jrpg-comp-name" style="font-size:15px;">' + escapeAttr(name) + ' <span style="font-size:11px;color:#8b6b4a;">[' + escapeAttr(m.称谓 || '其他') + ' · ' + escapeAttr(m.世代 || famGroupOf(m)) + ']</span> ' + famStatusBadge(m.存亡) + '</div></div>';
-                function row(k, v) { return v ? '<div style="font-size:12px;color:#4a3623;padding:2px 0;"><b style="color:#5a4430;">' + k + '：</b>' + v + '</div>' : ''; }
-                html += '<div style="background:rgba(255,250,240,0.6);border:1px solid #d2b48c;border-radius:6px;padding:8px 10px;margin-bottom:8px;">';
-                html += row('性别', escapeAttr(m.性别 || '')) + row('种族', escapeAttr(m.种族 || '')) + row('年龄', age !== null && age !== undefined ? age + '岁（' + escapeAttr(m.出生年月日 || '出生日期未记录') + '）' : escapeAttr(m.出生年月日 || ''));
-                html += row('身份', escapeAttr(m.身份 || '')) + row('所在地', escapeAttr(m.所在地 || '')) + row('描述', escapeAttr(m.描述 || ''));
-                html += row('资质', escapeAttr(_.get(m, '资质.等级', '—')) + (_.get(m, '资质.描述') ? '（' + escapeAttr(_.get(m, '资质.描述')) + '，经验效率' + (_.get(m, '资质.经验获取效率', 100)) + '%）' : ''));
-                html += row('魔力回路', escapeAttr(_.get(m, '魔力回路.品阶', '无回路')) + (_.get(m, '魔力回路.描述') ? '（' + escapeAttr(_.get(m, '魔力回路.描述')) + '）' : ''));
-                html += row('位阶', tier);
+                var fav = _.clamp(parseInt(m.好感度, 10) || 0, -100, 100);
+                var favColor = fav > 50 ? '#27ae60' : (fav > 0 ? '#f39c12' : '#7f8c8d');
+                // 头部：头像 + 名字 + 称谓/存亡/位阶徽章
+                html += '<div style="text-align:center;margin-bottom:10px;">';
+                html += '<img class="jrpg-comp-avatar" src="' + getAvatarUrl(name) + '" style="width:56px;height:56px;box-shadow:0 2px 10px rgba(139,107,74,.4);">';
+                html += '<div class="jrpg-comp-name" style="font-size:16px;margin-top:4px;">' + escapeAttr(name) + '</div>';
+                html += '<div style="margin-top:4px;display:flex;justify-content:center;gap:5px;flex-wrap:wrap;align-items:center;">';
+                html += '<span style="font-size:10px;color:#8b6b4a;background:rgba(139,107,74,.12);border-radius:8px;padding:1px 8px;">' + escapeAttr(m.称谓 || '其他') + (m.世代 ? ' · ' + escapeAttr(m.世代) : '') + '</span>';
+                html += famStatusBadge(m.存亡);
+                html += '<span class="jrpg-comp-tier ' + getCompTierClass(tier) + '">' + tier + '</span>';
+                html += '</div></div>';
+                // 信息胶囊（两列网格）
+                function pill(k, v, icon) {
+                    if (!v) return '';
+                    return '<div style="background:rgba(255,250,240,0.9);border:1px solid #e0cba8;border-radius:8px;padding:4px 9px;font-size:11px;color:#4a3623;display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0;"><span style="color:#8b6b4a;font-size:10px;white-space:nowrap;">' + icon + ' ' + k + '</span><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + v + '</b></div>';
+                }
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">';
+                html += pill('性别', escapeAttr(m.性别 || ''), '⚖');
+                html += pill('种族', escapeAttr(m.种族 || ''), '🧬');
+                html += pill('年龄', age !== null && age !== undefined ? age + '岁' : '—', '⏳');
+                html += pill('所在地', escapeAttr(m.所在地 || ''), '📍');
+                html += pill('身份', escapeAttr(m.身份 || ''), '🪪');
+                html += '<div style="background:rgba(255,250,240,0.9);border:1px solid #e0cba8;border-radius:8px;padding:4px 9px;font-size:11px;color:#4a3623;display:flex;justify-content:space-between;align-items:center;gap:6px;"><span style="color:#8b6b4a;font-size:10px;white-space:nowrap;">♥ 好感度</span><b style="color:' + favColor + ';">' + fav + '</b></div>';
+                html += '</div>';
+                if (m.出生年月日) html += '<div style="font-size:10px;color:#8b6b4a;text-align:center;margin-bottom:8px;">🎂 出生：' + escapeAttr(m.出生年月日) + '（日期一经确定不可改）</div>';
+                // 描述引用块
+                if (m.描述) html += '<div style="font-size:11px;color:#6b4e31;background:rgba(210,180,140,0.15);border-left:3px solid #b89b6a;border-radius:0 6px 6px 0;padding:6px 10px;margin-bottom:8px;font-style:italic;">「' + escapeAttr(m.描述) + '」</div>';
+                // 资质 / 魔力回路 双色卡
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">';
+                html += '<div style="background:linear-gradient(135deg,rgba(212,160,23,0.14),rgba(255,250,240,0.65));border:1px solid #d4a017;border-radius:8px;padding:6px 10px;">'
+                    + '<div style="font-size:10px;color:#8b6b4a;">🧬 资质</div>'
+                    + '<div style="font-size:15px;font-weight:bold;color:#a07414;">' + escapeAttr(_.get(m, '资质.等级', '—')) + '</div>'
+                    + (_.get(m, '资质.描述') ? '<div style="font-size:10px;color:#7f8c8d;line-height:1.5;">' + escapeAttr(_.get(m, '资质.描述')) + '</div>' : '')
+                    + '<div style="font-size:10px;color:#a07414;">经验效率 ' + (_.get(m, '资质.经验获取效率', 100)) + '%</div></div>';
+                html += '<div style="background:linear-gradient(135deg,rgba(41,128,185,0.14),rgba(255,250,240,0.65));border:1px solid #2980b9;border-radius:8px;padding:6px 10px;">'
+                    + '<div style="font-size:10px;color:#8b6b4a;">✦ 魔力回路</div>'
+                    + '<div style="font-size:15px;font-weight:bold;color:#2471a3;">' + escapeAttr(_.get(m, '魔力回路.品阶', '无回路')) + '</div>'
+                    + (_.get(m, '魔力回路.描述') ? '<div style="font-size:10px;color:#7f8c8d;line-height:1.5;">' + escapeAttr(_.get(m, '魔力回路.描述')) + '</div>' : '')
+                    + '<div style="font-size:10px;color:#2471a3;">' + (tier !== '普通' ? '位阶 ' + escapeAttr(tier) : '先天品性') + '</div></div>';
                 html += '</div>';
                 // 基础属性
                 var attrs = (m.基础属性 && typeof m.基础属性 === 'object') ? m.基础属性 : {};
@@ -7182,8 +7218,8 @@ var TRT_TECH = {
                 }
                 // 培养计划编辑（成长=资质×年龄×方向契合 的概率判定；生活费只维持培养）
                 var plan = (m.培养计划 && typeof m.培养计划 === 'object') ? m.培养计划 : {};
-                var dirs = ['', '武技', '魔法', '学识', '商业', '骑术', '信仰', '综合'];
-                var careerMap = { '武技': '护卫/佣兵/骑士', '魔法': '法师学徒/咒印师/炼金助手', '学识': '书记官/学者/医师学徒', '商业': '商人/账房/店主', '骑术': '骑手/斥候/驯兽师', '信仰': '教士/修士/圣殿侍从', '综合': '家主/冒险者' };
+                var dirs = ['', '武技', '魔法', '信仰', '学识', '商业', '技艺', '综合'];
+                var careerMap = { '武技': '护卫/佣兵/骑士', '魔法': '法师学徒/咒印师/炼金助手', '信仰': '教士/修士/圣殿侍从', '学识': '书记官/学者/医师学徒', '商业': '商人/账房/店主', '技艺': '铁匠/裁缝/驯兽师', '综合': '家主/冒险者' };
                 var curDir = plan.方向 || '';
                 var prob = famGrowthChance(m);
                 html += '<div style="font-size:12px;font-weight:bold;color:#5a4430;margin:10px 0 4px;">📚 培养计划 <span style="font-weight:normal;font-size:10px;color:#8b6b4a;">（玩家设置，AI 不可改；产业结算脚本每月判定成长）</span></div>';
