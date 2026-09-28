@@ -9340,18 +9340,28 @@ function applyUndyingPreset() {
             promptText += '加护/命格：' + trait + '\n';
             if (customDesc) promptText += '【定制方向】\n' + customDesc + '\n';
 
-            promptText += '\n请严格按照以下JSON格式输出传奇装备数据（不要输出其他文字，只输出JSON）：\n';
+            promptText += '\n请严格按照以下JSON格式输出传奇装备数据（不要输出其他文字，只输出JSON）。字段名必须逐字一致，这是游戏物品栏的结构化模板，缺字段会导致物品无法入栏：\n';
             promptText += '```json\n';
             promptText += '[\n';
-            promptText += '  { "name": "装备名称", "type": "武器/防具/饰品", "effect": "效果描述（含具体数值与机制）", "desc": "外观与来历故事描述" },\n';
+            promptText += '  {\n';
+            promptText += '    "物品名": "断钢·终焉",\n';
+            promptText += '    "物品大类": "武器",  // 武器/防具/饰品/一般物品 四选一\n';
+            promptText += '    "品阶": "传说",\n';
+            promptText += '    "装备位": "双手",  // 武器: 单手或双手；防具: 头部/躯干/腿部；饰品: 颈部；无法装备: 无\n';
+            promptText += '    "面板效果": { "攻击力": "2d10+8", "命中": "+3" },  // 数值型加成，无则空对象\n';
+            promptText += '    "附加词条": { "魔族克星": "对魔族伤害+50%", "血燃": "HP低于30%时攻击额外+3" },  // 机制词条，至少1条\n';
+            promptText += '    "数量": 1,\n';
+            promptText += '    "其它说明": "外观与来历描述，有史诗感和故事性，含与命格的呼应"\n';
+            promptText += '  },\n';
             promptText += '  ...\n';
             promptText += ']\n';
             promptText += '```\n\n';
             promptText += '要求：\n';
             promptText += '1. 生成 2~4 件传奇装备，风格必须与角色性格、人设、属性、职业高度契合\n';
-            promptText += '2. 效果要具体，包含数值或机制说明，体现"传奇/命格寄予"的强度\n';
-            promptText += '3. desc 要包含外观与来历，有史诗感和故事性\n';
-            promptText += '4. 若角色有命格/加护，装备最好与命格主题相呼应';
+            promptText += '2. 面板效果与附加词条要具体，包含数值或机制说明，体现"传奇/命格寄予"的强度\n';
+            promptText += '3. 其它说明要包含外观与来历，有史诗感和故事性\n';
+            promptText += '4. 若角色有命格/加护，装备最好与命格主题相呼应\n';
+            promptText += '5. 装备位必须正确填写（武器=单手/双手，防具=头部/躯干/腿部，饰品=颈部）';
 
             try {
                 var result = await generate({ user_input: promptText, should_silence: true });
@@ -9369,15 +9379,31 @@ function applyUndyingPreset() {
                 var parsed = JSON.parse(jsonStr);
                 if (!Array.isArray(parsed)) throw new Error('返回数据不是数组');
 
-                var items = parsed.filter(function(it) { return it.name && typeof it.name === 'string' && it.name.trim(); });
+                var items = parsed.filter(function(it) { return (it.物品名 || it.name) && typeof (it.物品名 || it.name) === 'string' && (it.物品名 || it.name).trim(); });
                 if (items.length === 0) throw new Error('未解析出有效的装备数据');
 
-                // 组装文本填入 cc-legendary-gear
+                // 组装结构化文本填入 cc-legendary-gear（保留完整物品栏字段，保存/写入时按此结构入栏）
                 var text = '';
                 items.forEach(function(it) {
-                    text += '◆ ' + (it.type ? it.type + '·' : '') + it.name.trim() + '\n';
-                    if (it.effect) text += '  效果：' + it.effect.trim() + '\n';
-                    if (it.desc) text += '  描述：' + it.desc.trim() + '\n';
+                    var nm = (it.物品名 || it.name || '').trim();
+                    var cat = (it.物品大类 || it.type || '').trim();
+                    var slot = (it.装备位 || '').trim();
+                    var rank = (it.品阶 || '传说').trim();
+                    text += '◆ ' + nm + '（' + cat + (slot ? ' / 装备位:' + slot : '') + ' / ' + rank + '）\n';
+                    var bp = it.面板效果;
+                    if (bp && typeof bp === 'object' && Object.keys(bp).length) {
+                        var bps = Object.keys(bp).map(function(k){ return k + ':' + bp[k]; }).join('；');
+                        text += '  面板效果：' + bps + '\n';
+                    }
+                    var aff = it.附加词条;
+                    if (aff && typeof aff === 'object' && Object.keys(aff).length) {
+                        var afs = Object.keys(aff).map(function(k){ return k + '：' + aff[k]; }).join('；');
+                        text += '  附加词条：' + afs + '\n';
+                    } else if (typeof aff === 'string' && aff.trim()) {
+                        text += '  附加词条：' + aff.trim() + '\n';
+                    }
+                    if (it.effect) text += '  效果：' + String(it.effect).trim() + '\n';
+                    if (it.desc || it.其它说明) text += '  说明：' + String(it.其它说明 || it.desc).trim() + '\n';
                 });
                 gearField.value = text.trim();
                 generatedLegendaryGear = text.trim();
@@ -9385,11 +9411,17 @@ function applyUndyingPreset() {
                 // 渲染结果预览
                 var html = '';
                 items.forEach(function(it) {
-                    var icon = it.type === '武器' ? '⚔️' : (it.type === '防具' ? '🛡️' : '📿');
+                    var nm2 = (it.物品名 || it.name || '').trim();
+                    var cat2 = (it.物品大类 || it.type || '').trim();
+                    var icon = cat2 === '武器' ? '⚔️' : (cat2 === '防具' ? '🛡️' : (cat2 === '饰品' ? '📿' : '🎒'));
                     html += '<div style="background:rgba(255,250,240,0.8);border:1px solid #c0392b;border-radius:4px;padding:6px 10px;margin-bottom:6px;">';
-                    html += '<div style="font-weight:bold;color:#c0392b;">' + icon + ' ' + it.name.trim() + (it.type ? ' <span style="font-size:10px;color:#8e44ad;">[' + it.type + ']</span>' : '') + '</div>';
-                    if (it.effect) html += '<div style="font-size:11px;color:#4a3623;margin-top:2px;">效果：' + it.effect.trim() + '</div>';
-                    if (it.desc) html += '<div style="font-size:10px;color:#7f8c8d;margin-top:2px;">' + it.desc.trim() + '</div>';
+                    html += '<div style="font-weight:bold;color:#c0392b;">' + icon + ' ' + nm2 + (cat2 ? ' <span style="font-size:10px;color:#8e44ad;">[' + cat2 + (it.装备位 ? '/' + it.装备位 : '') + ']</span>' : '') + '</div>';
+                    var bp = it.面板效果;
+                    if (bp && typeof bp === 'object' && Object.keys(bp).length) html += '<div style="font-size:11px;color:#4a3623;margin-top:2px;">面板：' + Object.keys(bp).map(function(k){ return k + ':' + bp[k]; }).join('；') + '</div>';
+                    var aff = it.附加词条;
+                    if (aff && typeof aff === 'object' && Object.keys(aff).length) html += '<div style="font-size:11px;color:#4a3623;margin-top:2px;">词条：' + Object.keys(aff).map(function(k){ return k + '：' + aff[k]; }).join('；') + '</div>';
+                    if (it.effect) html += '<div style="font-size:11px;color:#4a3623;margin-top:2px;">效果：' + String(it.effect).trim() + '</div>';
+                    if (it.desc || it.其它说明) html += '<div style="font-size:10px;color:#7f8c8d;margin-top:2px;">' + String(it.其它说明 || it.desc).trim() + '</div>';
                     html += '</div>';
                 });
                 resultEl.innerHTML = html;
@@ -10108,7 +10140,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
             var legendStr = '';
             var legendaryGear = document.getElementById('cc-legendary-gear').value;
             if (legendaryGear) {
-                legendStr = '\n\n【命格装备·世界意识馈赠】\n' + legendaryGear.replace(/\n/g, '\n');
+                legendStr = '\n\n【命格装备·世界意识馈赠】\n' + legendaryGear.replace(/\n/g, '\n') + '\n\n（写入规则：上述传奇装备须以完整物品栏结构写入 主角.资产与能力.物品栏——必含 物品大类/品阶/装备位/面板效果/附加词条/数量/其它说明 全部字段；装备位从其标注；写入时机=剧情中主角获得该装备时，而非开局直接拥有）';
             }
 
             var includeQuest = document.getElementById('include-quest').checked;
