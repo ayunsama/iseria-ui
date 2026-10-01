@@ -11073,7 +11073,12 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
                       var perJobSP2 = jobList2.length > 0 ? Math.floor(remainingSP2 / jobList2.length) : 0;
                       var remainSP2 = jobList2.length > 0 ? remainingSP2 % jobList2.length : 0;
                       jobList2.forEach(function(j, idx) {
-                          stat.主角.基础状态.职业信息[j.name] = { 等级: j.lvl, 技能点: perJobSP2 + (idx === 0 ? remainSP2 : 0), grantedLv: -1, grantedSp: -1 };
+                          // grantedSp 记为「已发放额度」(成长表sp×等级，与升级代码 shouldHave 同源)：
+                          // 升级代码的技能点对齐看到 grantedSp==shouldHave 就不会再补发；
+                          // 否则开局把技能点花光(技能点=0)时会被误判为从未发放而重复补发一整份。
+                          // grantedLv 同步记为等级，防止表外职业首跑时再按满骰叠加一遍 HP/MP/SP。
+                          var gsp = ((职业每级成长[normalizeJobNameForGrowth(j.name)] || {}).sp || 0) * j.lvl;
+                          stat.主角.基础状态.职业信息[j.name] = { 等级: j.lvl, 技能点: perJobSP2 + (idx === 0 ? remainSP2 : 0), grantedLv: j.lvl, grantedSp: gsp };
                       });
                       
                       stat.主角.资产与能力 = stat.主角.资产与能力 || {};

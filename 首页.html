@@ -10186,14 +10186,35 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
                       stat.主角.基础状态.总等级 = lvl;
                       
                       stat.主角.基础状态.职业信息 = {};
+                      // 开局技能池结算：baseSP=Σ(每级sp×等级) 已在创建时用于学习技能（toggleSkill 消耗 usedSP）。
+                      // 每职业 grantedSp 记为「已发放额度」（=data-sp×等级，与升级代码的 shouldHave 同源），
+                      // 升级代码的「普通职业技能点对齐」看到 grantedSp==shouldHave 就不会再补发同一份；
+                      // 剩余未花的 SP 写入主职业 技能点 随身携带（升级代码对技能点只减不增，安全）。
+                      // grantedLv 同步记为等级：表外职业（如 魔王/不死人）不会在首跑时再按满骰叠加一遍 HP/MP/SP。
+                      function ccJobSpPerLv(jobName, selId) {
+                          if (!jobName) return 0;
+                          var sel = document.getElementById(selId);
+                          var opt = sel ? sel.querySelector('option[value="' + jobName + '"]') : null;
+                          return parseInt(opt && opt.getAttribute('data-sp'), 10) || 0;
+                      }
+                      var ccRemainSP = (parseInt(baseSP, 10) || 0) - (parseInt(usedSP, 10) || 0);
+                      if (ccRemainSP < 0) ccRemainSP = 0;
+                      var ccRemainWritten = false;
+                      function ccWriteJob(jobName, lv, spPerLv) {
+                          if (!jobName) return;
+                          var granted = spPerLv * lv;
+                          var spNow = 0;
+                          if (!ccRemainWritten && ccRemainSP > 0) { spNow = ccRemainSP; ccRemainWritten = true; }
+                          stat.主角.基础状态.职业信息[jobName] = { 等级: lv, 技能点: spNow, grantedLv: lv, grantedSp: granted };
+                      }
                       if (mainJob && mainJob !== "无职业") {
-                          stat.主角.基础状态.职业信息[mainJob] = { 等级: allocatedJobLevels.main || 1, 技能点: 0, grantedLv: -1, grantedSp: -1 };
+                          ccWriteJob(mainJob, allocatedJobLevels.main || 1, ccJobSpPerLv(mainJob, 'cc-class'));
                       }
                       if (subJob1) {
-                          stat.主角.基础状态.职业信息[subJob1] = { 等级: allocatedJobLevels.sub1 || 1, 技能点: 0, grantedLv: -1, grantedSp: -1 };
+                          ccWriteJob(subJob1, allocatedJobLevels.sub1 || 1, ccJobSpPerLv(subJob1, 'cc-subclass1'));
                       }
                       if (subJob2 && subJob2 !== subJob1) {
-                          stat.主角.基础状态.职业信息[subJob2] = { 等级: allocatedJobLevels.sub2 || 1, 技能点: 0, grantedLv: -1, grantedSp: -1 };
+                          ccWriteJob(subJob2, allocatedJobLevels.sub2 || 1, ccJobSpPerLv(subJob2, 'cc-subclass2'));
                       }
                       
                       stat.主角.资产与能力 = stat.主角.资产与能力 || {};

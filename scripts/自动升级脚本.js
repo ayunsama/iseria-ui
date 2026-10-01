@@ -506,6 +506,18 @@
           currJobs[job].技能点 = prevSp;
         }
       }
+
+      // 技能点已由上方 applyJobLevel 逐级发放：同步推进 grantedSp 追踪，
+      // 使末尾「普通职业技能点对齐」的 shouldHave-grantedSp 差额为 0，
+      // 否则同一次升级的技能点会被对齐再补一遍（每级 +2份 的重复发放）。
+      const gJob = lookupJobGrowth(job);
+      const spPerLvJob = gJob ? safeParseInt(gJob.sp, 0) : 0;
+      if (currLv > prevLv && spPerLvJob > 0) {
+        const lvDiff = currLv - prevLv;
+        const prevGrantedSp = prevEntry && safeParseInt(prevEntry.grantedSp, -1) >= 0 ? safeParseInt(prevEntry.grantedSp, -1) : prevLv * spPerLvJob;
+        const newGrantedSp = prevGrantedSp + lvDiff * spPerLvJob;
+        if (safeParseInt(currJobs[job].grantedSp, -1) < newGrantedSp) currJobs[job].grantedSp = newGrantedSp;
+      }
     }
 
     // 重新计算总等级
