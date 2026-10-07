@@ -988,7 +988,9 @@
     }
     return commands;
   }
-  function gatePointSpending(commands) {
+  // ★ MVU 实际 emit 签名为 (variables, commands, message_content)：首参是 MvuData 而非命令数组，
+  //   旧版单参写法拿到的是 variables（.length 为 undefined）导致本闸门整体空转——已修复。
+  function gatePointSpending(variables, commands) {
     if (!commands || !commands.length) return;
     var pools = gateReadPools();
     // ── 1. 属性提升闸门 ──

@@ -319,12 +319,137 @@
     if (typeof toastr !== 'undefined') toastr.success('[产业结算] 结算已执行');
   }
 
+  // ============================================================
+  //  经验结算 + 自动记账（同一 VARIABLE_UPDATE_ENDED，在产业结算之后执行）
+  //  —— 数值脚本化：AI 只在 经验值.基础获取 声明「基础EXP」（未乘资质效率），本脚本负责：
+  //     ① 效率换算（×资质效率/100 向下取整，最低1）+ 单次上限（≤当前总等级升级所需，与经验硬闸同源）
+  //     ② 写入 经验值.当前 并清零 基础获取，随后 eventEmit('职业升级_手动处理') 让升级立即结算
+  //     ③ diff 全量记账：货币/物品栏/经验 的变动若未被本轮已有流水解释，自动补记 追踪记录
+  //  配套契约（变量更新规则）：AI 禁止写流水（状态栏硬拦截）、禁止自行乘效率；
+  //  直接 delta 经验值.当前 仍允许但受升级脚本硬闸且拿不到资质效率加成。
+  // ============================================================
+  const BK_TAG = '[自动记账]';
+  let bkProcessing = false;
+  function requiredExpOf(totalLv) {
+    const n = Math.max(1, Math.floor(Number(totalLv) || 1));
+    return 200 + 60 * (n - 1) + 18 * (n - 1) * (n - 1) + 6 * (n - 1) * (n - 1) * (n - 1);
+  }
+  function actorExpEfficiency(actor, isProtagonist) {
+    const raw = isProtagonist ? _.get(actor, '基础信息.资质.经验获取效率', 100) : _.get(actor, '资质.经验获取效率', 100);
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 100;
+  }
+  function handleBookkeeping(rawVariables, rawVariablesBefore) {
+    if (bkProcessing) return;
+    bkProcessing = true;
+    try {
+      const stat = rawVariables && rawVariables.stat_data;
+      const before = rawVariablesBefore && rawVariablesBefore.stat_data;
+      if (!stat || !before) return;
+      const world = stat.世界 || (stat.世界 = {});
+      const dateStr = world.日期 || '';
+      const pending = [];
+      let seq = 1;
+
+      // ---- ① 经验结算（主角+同伴；契约兽无经验体系） ----
+      let expSettled = 0, touchedExp = false;
+      const actors = [];
+      if (stat.主角) actors.push(['主角', stat.主角, true]);
+      if (stat.同伴 && typeof stat.同伴 === 'object') {
+        for (const name of Object.keys(stat.同伴)) actors.push(['同伴:' + name, stat.同伴[name], false]);
+      }
+      for (const [label, actor, isProtagonist] of actors) {
+        const expObj = actor && actor.基础状态 && actor.基础状态.经验值;
+        if (!expObj || typeof expObj !== 'object') continue;
+        const base = Math.floor(Number(expObj.基础获取) || 0);
+        if (base <= 0) continue;
+        const eff = actorExpEfficiency(actor, isProtagonist);
+        let final = Math.max(1, Math.floor(base * eff / 100));
+        const totalLv = Number(_.get(actor, '基础状态.总等级', 1)) || 1;
+        const cap = requiredExpOf(totalLv);
+        let capped = '';
+        if (final > cap) { final = cap; capped = '，触顶截断'; }
+        expObj.当前 = (Number(expObj.当前) || 0) + final;
+        expObj.基础获取 = 0;
+        expSettled += final;
+        touchedExp = true;
+        pending.push({ 类型: '经验获取', 金额: final, 余额: -1, 说明: label + ' 经验结算（基础' + base + '×效率' + eff + '%' + capped + '）' });
+      }
+      if (touchedExp && typeof eventEmit === 'function') {
+        // 让升级脚本立刻消化新经验（其内部有防重入锁，不会死循环）
+        try { eventEmit('职业升级_手动处理', rawVariables, rawVariablesBefore); } catch (e) { console.warn(BK_TAG + ' 升级联动失败:', e); }
+      }
+
+      // ---- ② diff 记账 ----
+      const track = (world.追踪记录 && typeof world.追踪记录 === 'object') ? world.追踪记录 : (world.追踪记录 = {});
+      const beforeTrack = (before.世界 && before.世界.追踪记录 && typeof before.世界.追踪记录 === 'object') ? before.世界.追踪记录 : {};
+      const explained = [];
+      for (const k of Object.keys(track)) if (!(k in beforeTrack)) explained.push(track[k] || {});
+      let explainedMoney = 0, explainedExp = expSettled;   // 本脚本自己的经验结算视为已解释
+      const explainedItemNames = new Set();
+      for (const e of explained) {
+        const amt = Math.floor(Number(e.金额) || 0);
+        if (e.类型 === '经验获取') explainedExp += Math.abs(amt);
+        else explainedMoney += amt;
+        if (e.物品) explainedItemNames.add(String(e.物品));
+      }
+      // 货币
+      const moneyNow = Math.floor(Number(_.get(stat, '主角.资产与能力.货币', 0)) || 0);
+      const moneyBefore = Math.floor(Number(_.get(before, '主角.资产与能力.货币', 0)) || 0);
+      const unexplainedMoney = moneyNow - moneyBefore - explainedMoney;
+      if (unexplainedMoney !== 0) {
+        pending.push({ 类型: '货币变动', 金额: unexplainedMoney, 余额: moneyNow, 说明: '自动记账：未说明的货币变动' });
+      }
+      // 经验（只记正增量；负增量=升级消耗/脚本托管，不记）
+      const expNow = Math.floor(Number(_.get(stat, '主角.基础状态.经验值.当前', 0)) || 0);
+      const expBefore = Math.floor(Number(_.get(before, '主角.基础状态.经验值.当前', 0)) || 0);
+      const unexplainedExp = (expNow - expBefore) - explainedExp;
+      if (unexplainedExp > 0) {
+        pending.push({ 类型: '经验获取', 金额: unexplainedExp, 余额: -1, 说明: '自动记账：未说明的经验获取' });
+      }
+      // 物品（主角物品栏：新增/移除/数量变化）
+      const inv = _.get(stat, '主角.资产与能力.物品栏', {});
+      const invBefore = _.get(before, '主角.资产与能力.物品栏', {});
+      if (inv && typeof inv === 'object') {
+        const names = new Set([...Object.keys(inv), ...Object.keys(invBefore || {})]);
+        for (const name of names) {
+          if (explainedItemNames.has(name)) continue;   // 本轮流水已提到该物品，视为已解释
+          const now = inv[name] && typeof inv[name] === 'object' ? Math.floor(Number(inv[name].数量) || 0) : 0;
+          const was = invBefore && invBefore[name] && typeof invBefore[name] === 'object' ? Math.floor(Number(invBefore[name].数量) || 0) : 0;
+          const d = now - was;
+          if (d === 0) continue;
+          pending.push({ 类型: d > 0 ? '物品获得' : '物品失去', 金额: 0, 物品: name, 数量: d, 余额: -1, 说明: '自动记账：物品' + (d > 0 ? '获得' : '失去') });
+        }
+      }
+      // 写入流水（货币类余额=当前货币；经验/物品类余额=-1）
+      if (pending.length) {
+        for (const rec of pending) {
+          track[genRecordId(track, seq++)] = {
+            时间: dateStr,
+            类型: rec.类型,
+            金额: rec.金额,
+            物品: rec.物品 || '',
+            数量: rec.数量 || 0,
+            余额: rec.余额 !== undefined ? rec.余额 : -1,
+            说明: rec.说明 || ''
+          };
+        }
+        console.log(BK_TAG + ' 本轮补记 ' + pending.length + ' 条流水');
+      }
+    } catch (e) {
+      console.error(BK_TAG + ' 出错:', e);
+    } finally {
+      bkProcessing = false;
+    }
+  }
+
   // ---------- 事件注册 ----------
   const init = async () => {
     await waitGlobalInitialized('Mvu');
     eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, handleUpdate);
     eventOn('产业结算_手动处理', manualSettle);
-    console.log(TAG + ' 已加载（产业月/季度自动补算 · 家族培养周期成长）');
+    eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, handleBookkeeping);
+    console.log(TAG + ' 已加载（产业月/季度自动补算 · 家族培养周期成长 · 经验结算 · 自动记账）');
   };
 
   $(init);

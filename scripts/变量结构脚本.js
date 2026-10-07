@@ -147,7 +147,8 @@ const 基础状态块 = z.object({
   自身状态: z.record(z.string().describe('状态名'), z.object({ 描述: str('') }).prefault({})).prefault({}),
   经验值: z.object({
     当前: safeNum(0),
-    升级所需: clampNum(100, 1, 1e12)   // 脚本托管：升级脚本按总等级公式强制计算，AI 禁改（主角另有命令层硬拦截）
+    升级所需: clampNum(100, 1, 1e12),   // 脚本托管：升级脚本按总等级公式强制计算，AI 禁改（主角另有命令层硬拦截）
+    基础获取: safeNum(0)   // 脚本托管：AI 声明的基础EXP（未乘资质效率），「产业结算脚本·自动记账」换算入账后清零
   }).prefault({}),
   // 职业信息: { 职业名: { 等级, 技能点 } } —— 升级脚本据此 diff
   职业信息: z.record(z.string().describe('职业名'), 职业条).prefault({}),

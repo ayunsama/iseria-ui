@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>时空存档·读档机制 点击测试</title>
+<style>
+body{font-family:"Microsoft YaHei";margin:10px;background:#f5f0e6;color:#333;}
+#log{height:150px;overflow:auto;background:#fff;border:1px solid #999;padding:6px;font-size:12px;font-family:Consolas,monospace;}
+button{padding:4px 10px;margin:2px;cursor:pointer;}
+iframe{width:100%;height:170px;border:2px solid #8b6b4a;background:#fff;box-sizing:border-box;margin-bottom:6px;}
+h3{margin:6px 0;}
+</style></head><body>
+<h3>⏳ 时空存档·读档机制 点击测试（真实鼠标点击验证）</h3>
+<div style="font-size:12px;color:#666;line-height:1.7;">
+结构：顶层（模拟酒馆主文档，挂假 TavernHelper）→ 楼层3 iframe（老楼层，无状态栏stub）+ 楼层12 iframe（最新楼层，含状态栏stub 运行真实读档补丁）。<br>
+实测顺序：① 真实点击 <b>楼层12 的「存1」</b>→ 应出现 toastr 成功日志；② 真实点击 <b>楼层3（老楼层）的「存2」</b>→ 修复前无任何反应（监听器从未装到该文档）。</div>
+<div>
+<button onclick="document.getElementById('f3').contentWindow.location.reload()">🔄 重载楼层3文档（模拟楼层重渲染）</button>
+<button onclick="document.getElementById('log').innerHTML='';IZLOG('日志已清空')">清空日志</button>
+</div>
+<div id="log"></div>
+<div style="font-size:12px;font-weight:bold;color:#8b6b4a;">楼层3（老楼层 · 无stub · 修复前监听器覆盖不到）</div>
+<iframe id="f3" src="./读档-楼层文档.html?floor=3"></iframe>
+<div style="font-size:12px;font-weight:bold;color:#8b6b4a;">楼层12（最新楼层 · stub运行读档补丁）</div>
+<iframe id="f12" src="./读档-楼层文档.html?floor=12&stub=1"></iframe>
+<script>
+window.IZLOG = function(msg, color){ var d=document.createElement('div'); d.style.color=color||'#333'; d.textContent='['+new Date().toLocaleTimeString()+'] '+msg; var L=document.getElementById('log'); L.appendChild(d); L.scrollTop=L.scrollHeight; };
+window.SLOTS = {};
+window.TavernHelper = {
+  getVariables: function(o){ return Promise.resolve({ isuria_save_slots: window.SLOTS }); },
+  insertOrAssignVariables: function(payload, o){ Object.assign(window.SLOTS, payload.isuria_save_slots); IZLOG('TH.insertOrAssignVariables 已写入聊天变量', '#2980b9'); return Promise.resolve(true); },
+  getLastMessageId: function(){ return 12; },
+  deleteChatMessages: function(ids){ IZLOG('TH.deleteChatMessages: 删除楼层 ' + JSON.stringify(ids), '#c0392b'); return Promise.resolve(); },
+  toastr: { success(m,t){IZLOG('[toastr·成功] '+(t?t+'：':'')+m,'#27ae60');}, info(m,t){IZLOG('[toastr·信息] '+(t?t+'：':'')+m,'#2980b9');}, error(m,t){IZLOG('[toastr·错误] '+(t?t+'：':'')+m,'#c0392b');}, warning(m,t){IZLOG('[toastr·警告] '+(t?t+'：':'')+m,'#e67e22');} }
+};
+IZLOG('测试页就绪：楼层3（无stub）+ 楼层12（含stub）已加载', '#8e44ad');
+</script>
+</body></html>
