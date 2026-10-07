@@ -69,13 +69,14 @@
   const IMPACT_TABLE = { '小': 4, '中': 8, '大': 14, '极大': 20 };
   // 宽容解析（去空白/间隔符；兼容 升/降、+/- 别名；未知/缺失/无 → 0 不结算）
   function parseDeclaredImpact(dirRaw, magRaw) {
-    const dir = String(dirRaw == null ? '' : dirRaw).replace(/[\s·・\-—–:：,，]/g, '');
+    const dir0 = String(dirRaw == null ? '' : dirRaw).trim();
+    const dir = dir0.replace(/[\s·・\-—–:：,，]/g, '');
     const mag = String(magRaw == null ? '' : magRaw).replace(/[\s·・\-—–:：,，]/g, '');
     if (!mag || mag === '无' || mag === '0') return 0;
     const m = IMPACT_TABLE[mag];
     if (!m) return 0;
-    if (dir === '加剧' || dir === '升' || dir === '增' || dir === '+') return m;
-    if (dir === '缓和' || dir === '降' || dir === '减' || dir === '-') return -m;
+    if (dir === '加剧' || dir === '升' || dir === '增' || dir0 === '+') return m;
+    if (dir === '缓和' || dir === '降' || dir === '减' || dir0 === '-') return -m;
     return 0;
   }
 
