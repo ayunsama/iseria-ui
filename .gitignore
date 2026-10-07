@@ -1,0 +1,8 @@
+sim/config.local.json
+sim/state.json
+sim/chatlog.json
+sim/outbox/
+sim/inbox/
+sim/metrics.json
+sim/metrics.jsonl
+sim/run11-30.log

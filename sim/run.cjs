@@ -12,6 +12,7 @@ const env = require('./env.cjs');
 const mvu = require('./mvu.cjs');
 const ejs = require('./ejs.cjs');
 const behavior = require('./behavior.cjs');
+const driver = require('./driver.cjs');
 
 const SIM_DIR = __dirname;
 const OUTBOX = path.join(SIM_DIR, 'outbox');
@@ -27,10 +28,30 @@ fs.mkdirSync(OUTBOX, { recursive: true });
 fs.mkdirSync(INBOX, { recursive: true });
 
 // ---------- 初始变量 ----------
+const STATE_FILE = path.join(SIM_DIR, 'state.json');
+const CHATLOG_FILE = path.join(SIM_DIR, 'chatlog.json');
 function loadInitialStat() {
+  // 续跑优先：存在 state.json（上轮结束时的 stat_data 快照）则恢复，保证跨进程状态连续
+  if (fs.existsSync(STATE_FILE)) {
+    const saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    console.log('[run] 已恢复上轮状态（state.json, ' + Buffer.byteLength(JSON.stringify(saved)) + 'B, 楼层' + (saved.世界 && saved.世界.日期 || '-') + '）');
+    return saved;
+  }
   const y = fs.readFileSync(path.join(__dirname, '../../yiseliya/dist/伊瑟利亚/初始变量'), 'utf8');
   const data = yaml.parse(y);
   return data;
+}
+function loadChatLog() {
+  if (fs.existsSync(CHATLOG_FILE)) return JSON.parse(fs.readFileSync(CHATLOG_FILE, 'utf8'));
+  return null;
+}
+function saveProgress() {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(env.variables.chat));
+  fs.writeFileSync(CHATLOG_FILE, JSON.stringify(env.chatLog));
+}
+function resetProgress() {
+  if (fs.existsSync(STATE_FILE)) fs.unlinkSync(STATE_FILE);
+  if (fs.existsSync(CHATLOG_FILE)) fs.unlinkSync(CHATLOG_FILE);
 }
 
 // ---------- 世界书装配 ----------
@@ -176,6 +197,10 @@ function waitReply(floor, timeoutMs) {
 
 // ---------- 主循环 ----------
 (async () => {
+  // --reset 参数：清空持久化状态从头开始
+  if (process.argv.includes('--reset')) { resetProgress(); console.log('[run] 已清空持久化状态'); }
+  const savedLog = loadChatLog();
+  if (savedLog) env.chatLog.push(...savedLog);
   const initial = loadInitialStat();
   env.initEnv(initial);
   // 捕获变量结构脚本注册的 zod schema（env 在加载脚本前已挂全局 registerMvuSchema）
@@ -205,24 +230,43 @@ function waitReply(floor, timeoutMs) {
       const stat = env.variables.chat;
       applyUiAction(stat, action.text);
       await env.Mvu.__driveUpdate(stat, before, '');
+      saveProgress();
       const m = statMetrics();
       metrics.push({ floor, kind: 'ui', action: action.text.slice(0, 30), ...m, conflicts: conflictChecks(), warnings: env.collected.scriptWarnings.splice(0) });
       console.log('[UI楼 ' + floor + '] 已应用，stat=' + m.statBytes + 'B');
       continue;
     }
 
-    // 正常楼：装配 → 出箱等待代答
+    // 正常楼：装配 → 自动（LLM）或 出箱手动代答
     const { messages, wbChars, histChars } = buildPrompt(action.text);
     let ctxChars = wbChars + histChars;
+    const AUTO = process.argv.includes('--auto');
     const promptText = '=== 本楼编号: ' + floor + ' ===\n'
       + '=== 你是「伊瑟利亚大陆」的AI主持者。以下是系统上下文与对话历史，请输出正文叙事，并在文末按 <UpdateVariable><Analysis>…</Analysis><JSONPatch>[…]</JSONPatch></UpdateVariable> 输出变量更新。 ===\n\n'
       + messages.map(m => '[' + m.role + ']\n' + m.content).join('\n\n');
     fs.writeFileSync(path.join(OUTBOX, 'floor-' + floor + '.prompt.txt'), promptText);
-    console.log('[楼 ' + floor + '] 提示词已写入 (' + ctxChars + '字 ≈' + Math.round(ctxChars / 2.2) + 'tok)，等待代答…');
+    console.log('[楼 ' + floor + '] 提示词就绪 (' + ctxChars + '字 ≈' + Math.round(ctxChars / 2.2) + 'tok)' + (AUTO ? '，LLM自动生成…' : '，等待代答…'));
 
-    let reply;
-    try { reply = await waitReply(floor, 15 * 60 * 1000); } catch (e) { console.error(e.message); break; }
+    let reply, usage = null;
+    if (AUTO) {
+      // 额外变量更新API对齐：正文调用 = 世界书+历史+用户行为；变量更新指令随正文同源
+      // 记录正文输入token（真实游玩中这部分走正文API）与 UpdateVariable 块负载（真实游玩中走额外变量API）
+      try {
+        const r = await driver.chat(messages, { temperature: 0.9 });
+        reply = r.content;
+        usage = r.usage;
+      } catch (e) {
+        console.error('[楼 ' + floor + '] LLM失败: ' + e.message);
+        fs.appendFileSync(path.join(SIM_DIR, 'failed-floors.txt'), floor + '\n');
+        break;
+      }
+    } else {
+      try { reply = await waitReply(floor, 15 * 60 * 1000); } catch (e) { console.error(e.message); break; }
+    }
     const replyChars = reply.length;
+    // 变量块单独折算（真实游玩：额外变量更新API的输入=整份上下文，输出=UpdateVariable块）
+    const uvMatch = reply.match(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>/);
+    const uvChars = uvMatch ? uvMatch[0].length : 0;
     env.chatLog.push({ role: 'user', message: action.text });
     env.chatLog.push({ role: 'assistant', message: reply });
     env.variables.message[floor] = null; // 占位，随后被真实快照覆盖
@@ -236,9 +280,11 @@ function waitReply(floor, timeoutMs) {
     const m = statMetrics();
     const conflicts = conflictChecks();
     const rec = {
-      floor, kind: 'llm', action: action.text.slice(0, 30),
+      floor, kind: AUTO ? 'llm-auto' : 'llm-manual', action: action.text.slice(0, 30),
       wbChars, histChars, ctxChars, replyChars,
       ctxTokens: Math.round(ctxChars / 2.2), replyTokens: Math.round(replyChars / 2.2),
+      apiUsage: usage,   // 真实端点用量（正文API）
+      varApiLoad: uvChars ? { inputTokens: Math.round(ctxChars / 2.2), outputChars: uvChars } : null,   // 额外变量API折算负载
       patchApplied: result.applied.length, patchDropped: result.dropped.length,
       zodErrors: result.errors,
       ...m, conflicts,
@@ -247,6 +293,7 @@ function waitReply(floor, timeoutMs) {
     };
     metrics.push(rec);
     fs.appendFileSync(METRICS, JSON.stringify(rec) + '\n');
+    saveProgress();   // 每楼持久化：进程中断/续跑时状态连续
     console.log('[楼 ' + floor + '] 回复' + replyChars + '字 | 补丁 ' + result.applied.length + ' 应/' + result.dropped.length + ' 弃 | stat=' + m.statBytes + 'B | 流水' + m.追踪记录 + ' | 冲突' + conflicts.length + (conflicts.length ? ' ⚠ ' + conflicts.join('; ') : ''));
   }
 
