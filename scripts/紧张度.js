@@ -6,7 +6,7 @@
  *   当地事件预告职责已移交「剧情规划大师/推进」（避免功能重合）。
  *
  * ★ 现行功能：
- *   1. 贡献分解（窗口）：当前值 = 基线 + 世界级/大陆级/区域级（封顶±15）+ 每条新闻影响徽章（↑+N/↓N/已落幕）
+ *   1. 贡献分解（窗口）：当前值 = 基线 + Σ(新闻申报影响) + 每条新闻影响徽章（↑+N/↓N/已落幕）
  *   2. 阶段进度标记：注入与窗口显示"本阶段已发生 N 起已结算事件"
  *   3. 玩家行为→世界回响（方案四）：监听最新正文，规则匹配重大行为（讨伐强敌/刺杀要人/背叛/攻破城塞等）
  *      → 自动生成余波新闻写入 动态新闻 → 进结算体系（防重复：楼层指针）
@@ -31,29 +31,24 @@
  *   脚本只把「世界见闻.动态新闻」作为唯一输入源，用「期望值=基线+Σ(已结算新闻影响值)」重算并覆盖当前值，
  *   彻底杜绝「遇怪 +、遇危机 +」式的随意抬升。
  *
- * 【新闻 → 紧张度 结算规则】
- *   - 影响基准 = 重要性 × 影响范围（新闻可带「影响范围: 世界/大陆/区域/局部」，未标注默认大陆）：
- *       · 世界级（魔王降世/灭国之战/全大陆战争）：极高 ±18 / 高 ±10
- *       · 大陆级（默认）：极高 ±12 / 高 ±8
- *       · 区域性（王国内战/边境冲突）：极高 ±5 / 高 ±3 —— 区域性事件永远不该把"全球"紧张度顶到决战期
- *       · 局部：0（局部遭遇、遇怪、小队危机、日常战斗一律不算）
- *   - 内容关键词决定方向：大事件关键词（宣战/入侵/魔潮/政变/灾变/降世/传说死亡失踪/集结/冲突…）→ 增加
- *     缓和关键词（停火/和平/谈判/结盟/平息/撤军/胜利/治愈/拯救…）→ 降低
- *   - 关键词方向按命中数比较：缓解命中 > 大事件命中 → 取负；否则取正；都不命中 → 0
- *   - 误判修正（否定/化解词）：
- *       · 失败词（破裂/失败/告吹/中断/终止/未遂…）——缓和被否定 → 该条不按缓和计；大事件未遂 → 不结算
- *       · 加剧词（加剧/升级/恶化/蔓延…）——坏事升级 → 强制按上升计
- *       · 化解词（平息/镇压/击退/阻止/化解/解围…）——大事件被化解 → 按缓和计（如"叛乱被镇压"）
- *   - 区域影响封顶：所有「区域」级已结算影响合计 clamp 在 ±15（区域性冲突再多，全球紧张度也只小幅波动）
+ * 【新闻 → 紧张度 结算规则（AI 申报制·无关键词推断）】
+ *   - AI 在新闻内以「方向 + 影响度」两字段如实申报，脚本只做数值映射：
+ *       · 方向: 加剧（世界更紧张）/ 缓和（世界回暖）
+ *       · 影响度: 小 ±4 / 中 ±8 / 大 ±14 / 极大 ±20（缓和取负号同量级）
+ *       · 缺字段、方向无法识别、影响度=无 → 0（不结算，防误抬）
+ *   - 申报口径（世界书契约同步）：极大=改变大陆乃至世界格局（宣战/魔王降世/灭国/决战）；
+ *     大=牵动一国或多国（政变/刺杀要人/王都陷落）；中=区域级冲突或化解；小=城镇级风波；
+ *     局部遭遇/遇怪/个人事件 → 「无」。
  *   - 【平衡】楼龄衰减：每条新闻影响随楼龄减半（半衰期 60 楼，剧情停滞超 25 楼退潮加速×2）——旧闻随时间淡出，紧张度自然回落
- *   - 【平衡】分层正向封顶：世界正向 ≤+25 / 大陆正向 ≤+35 / 区域 ±15（负向不设限）——中小新闻堆量只到危机期，决战期必须由世界级事件支撑
  *   - 【平衡】自动落幕：新闻楼龄超 300 楼自动移出结算并标记已落幕（不再复活）——即便 AI 从不标记过期，紧张度也会缓步回归基线
  *   - 紧张度回落：新闻被标记「是否过期: 是」或从 动态新闻 删除后，其影响自动从期望值移除（事件结束 → 回落）
  *   - 已结算表上限保护：超过 500 条时优先删除影响为 0 的记录
+ *   - 无分层封顶：单桶求和后 clamp 0~100（旧的世界/大陆/区域分层封顶已移除——它曾制造"决战气氛却停在动荡期"的脱节）
  *
- * 【DLC·终焉纪元（IF线）反转】
- *   - 检测聊天变量「终焉纪元IF线」（与战斗结算前端一致），为真时紧张度实为"压迫指数"
- *     （100=教廷完全统治 → 0=魔王陨落），结算方向自动反转（击败统领/解放/起义/各族觉醒 → 压迫降低）。
+ * 【DLC·终焉纪元（IF线）·压迫指数】
+ *   - 检测聊天变量「终焉纪元IF线」，为真时紧张度实为"压迫指数"（100=教廷完全统治 → 0=魔王陨落）；
+ *     方向由 AI 申报本身承载（镇压成功=加剧、起义/解放/各族觉醒=缓和），脚本不做关键词反转。
+ *   - IF 线下不启用「终局阶保底 85」联动（仅本体线适用）。
  */
 (function () {
   'use strict';
@@ -70,136 +65,23 @@
     return '决战期';
   }
 
-  // ── 大事件关键词（提升紧张度 / 压迫指数） ──
-  const RISE_WORDS = [
-    '宣战', '入侵', '进攻', '开战', '战争', '战火', '魔潮', '暴动', '政变', '王选', '崩坏',
-    '灾变', '降世', '前兆', '觉醒', '传说死亡', '传说失踪', '失踪', '集结', '冲突', '危机',
-    '崩溃', '封锁', '围困', '袭击', '爆发', '屠杀', '叛乱', '异动', '扩张', '异常', '逼近',
-    '压境', '挑衅', '摩擦', '警戒', '动员', '征兵', '沦陷', '内乱', '分裂', '决裂', '备战',
-    '暗杀', '血洗', '清洗', '处决', '暴乱', '起义', '示威', '罢工', '反叛', '叛逃', '决斗',
-    '围城', '攻城', '灭国', '瘟疫', '旱灾', '饥荒', '海啸', '地震', '魔力紊乱'
-  ];
-  // ── 缓和关键词（降低紧张度 / 压迫指数） ──
-  const FALL_WORDS = [
-    '停火', '和平', '谈判', '和解', '结盟', '停战', '撤军', '胜利', '治愈', '拯救', '平息',
-    '平定', '解放', '复国', '恢复', '签订', '协议', '退兵', '缓解', '罢战', '休战', '和谈',
-    '归顺', '驱逐', '剿灭', '消灭', '化解', '庆功', '投降', '招安', '通商', '建交', '援助',
-    '救济', '重建', '镇压成功', '击退', '挽回', '缓和', '和约', '停战协议', '和平协议',
-    '大赦', '休养生息', '罢兵', '偃旗息鼓'
-  ];
-
-  // ── 失败/未遂词（好事的否定：缓和失败 → 不按缓和计；大事件未遂 → 不结算） ──
-  const FAIL_WORDS = [
-    '破裂', '失败', '告吹', '中断', '终止', '取消', '无效', '流产', '违约', '撕毁',
-    '作废', '搁浅', '反悔', '泡汤', '夭折', '未遂', '溃散', '受挫', '破产'
-  ];
-  // ── 恶化/加剧词（坏事升级 → 强制按上升计） ──
-  const RAMP_WORDS = [
-    '加剧', '升级', '恶化', '扩大', '蔓延', '失控', '愈演愈烈', '白热化', '沸反盈天'
-  ];
-  // ── 化解/压制词（大事件被化解 → 按缓和计） ──
-  const RESOLVE_WORDS = [
-    '平息', '平定', '化解', '击退', '驱逐', '镇压', '剿灭', '歼灭', '解救', '解除',
-    '阻止', '制止', '避免', '挫败', '粉碎', '瓦解', '覆灭', '投降', '收复', '破获',
-    '肃清', '解围', '救出', '压制', '驱散', '破除', '终结', '收编'
-  ];
-
-  // ── IF线（压迫指数）专用关键词 ──
-  // 压迫指数：100=教廷完全统治 → 0=魔王陨落。
-  // 反抗/教廷受挫（击败统领/解放/复国/起义/各族觉醒…）→ 压迫降低（对玩家有利）；
-  // 教廷镇压/扩张（镇压成功/处决/血洗/围剿…）→ 压迫升高（教廷统治加强）。
-  const IF_FALL_WORDS = [
-    '击败', '斩杀', '推翻', '瓦解', '起义', '反抗', '解放', '复国', '觉醒', '罢工', '暴动',
-    '反叛', '叛逃', '暗杀', '击溃', '击退', '驱逐', '收复', '突入', '攻破', '倒戈', '兵变',
-    '叛变', '废除', '粉碎', '覆灭', '星辉复兴', '剪断锁链', '神谕', '自由', '解放区', '起义军'
-  ];
-  const IF_RISE_WORDS = [
-    '镇压', '处决', '血洗', '清洗', '逮捕', '屠戮', '扩张', '吞并', '奴役', '封锁', '围剿',
-    '戒严', '铁腕', '灭族', '屠杀', '掌控', '增援', '出兵', '入侵', '进攻', '强征', '搜捕',
-    '拷问', '灭口', '神权独裁', '铁幕', '统治核心', '教廷大军'
-  ];
-
-  function countHits(text, words) {
-    let n = 0;
-    for (const w of words) if (text.indexOf(w) !== -1) n++;
-    return n;
+  // ── 影响度申报表（AI 双字段申报：方向 加剧/缓和 + 影响度 小/中/大/极大；无额外封顶） ──
+  const IMPACT_TABLE = { '小': 4, '中': 8, '大': 14, '极大': 20 };
+  // 宽容解析（去空白/间隔符；兼容 升/降、+/- 别名；未知/缺失/无 → 0 不结算）
+  function parseDeclaredImpact(dirRaw, magRaw) {
+    const dir = String(dirRaw == null ? '' : dirRaw).replace(/[\s·・\-—–:：,，]/g, '');
+    const mag = String(magRaw == null ? '' : magRaw).replace(/[\s·・\-—–:：,，]/g, '');
+    if (!mag || mag === '无' || mag === '0') return 0;
+    const m = IMPACT_TABLE[mag];
+    if (!m) return 0;
+    if (dir === '加剧' || dir === '升' || dir === '增' || dir === '+') return m;
+    if (dir === '缓和' || dir === '降' || dir === '减' || dir === '-') return -m;
+    return 0;
   }
 
-  // 影响范围基准：世界/大陆/区域/局部（未标注默认大陆）
-  //  —— 王国内战这类区域性事件永远不该把"全球"紧张度顶到决战期
-  function scopeBase(importance, scope) {
-    if (scope === '局部') return 0;            // 局部：不影响全局
-    const hi = importance === '极高';
-    const md = importance === '高';
-    if (!hi && !md) return 0;                  // 普通/低：局部事件不影响
-    if (scope === '世界') return hi ? 18 : 10;  // 世界级（魔王降世/灭国之战）
-    if (scope === '区域') return hi ? 5 : 3;   // 区域性（王国内战/边境冲突）
-    return hi ? 12 : 8;                        // 大陆级（默认）
-  }
-  function normalizeScope(s) {
-    if (s === '世界' || s === '区域' || s === '局部') return s;
-    return '大陆';
-  }
-  // ── 世界级关键词兜底：魔王/魔潮/灾兽/空间通道/联军决战等魔族攻势事件，无论 AI 标注什么都按
-  //    世界级结算——AI 惯性把决战期大事件标成"大陆级"（默认），导致紧张度被大陆封顶(+35)卡死，
-  //    出现"空间通道开启却动荡期"的脱节。局部豁免（玩家小队级战斗），IF线压迫指数语义不同不适用。
-  const WORLD_SCOPE_RE = /魔王|奥姆尼斯|魔潮|灾兽|空间通道|魔族军团|人类联军|讨伐魔王|决战/;
-  function promoteScope(title, content, scope, ifLine) {
-    if (ifLine || scope === '局部' || scope === '世界') return scope;
-    const text = String(title || '') + ' ' + String(content || '');
-    return WORLD_SCOPE_RE.test(text) ? '世界' : scope;
-  }
-  // 已结算记录取值（兼容旧档：数字 → 视为 {v:数, s:'大陆'}）
+  // 已结算记录取值（兼容旧档：数字 → 视为数值）
   function settledValue(rec) {
     return (typeof rec === 'number') ? rec : (rec && typeof rec.v === 'number' ? rec.v : 0);
-  }
-
-  // 计算单条新闻的紧张度影响值（正=增加，负=降低，0=不改变）
-  function computeNewsImpact(title, content, importance, scope, ifLine) {
-    // 影响基准 = 重要性 × 影响范围（极高/高 才影响世界紧张度）
-    const base = scopeBase(importance, scope);
-    if (base === 0) return 0;
-
-    const text = String(title || '') + ' ' + String(content || '');
-    const fail = countHits(text, FAIL_WORDS);    // 好事失败/未遂
-    const ramp = countHits(text, RAMP_WORDS);    // 坏事加剧
-    const resolve = countHits(text, RESOLVE_WORDS); // 坏事被化解
-
-    // IF线（压迫指数）独立判定：反抗→压迫降，镇压→压迫升
-    if (ifLine) {
-      const fall = countHits(text, IF_FALL_WORDS);
-      const rise = countHits(text, IF_RISE_WORDS);
-      if (fall === 0 && rise === 0) return 0;
-      // IF线化解词：排除与 IF_RISE 重叠的词（如"镇压"），避免同词既算升又算化解
-      const resolveIf = countHits(text, RESOLVE_WORDS.filter(w => IF_RISE_WORDS.indexOf(w) === -1));
-      // 反抗失败/加剧（起义被镇压/反抗失败）→ 压迫升
-      if (fall > 0 && (fail > 0 || ramp > 0)) return base;
-      // 教廷手段被化解（围剿被粉碎/戒严被解除）→ 压迫降
-      if (rise > 0 && resolveIf > 0) return -base;
-      // 反抗与镇压同现 → 镇压优先（起义被镇压 → 压迫升）
-      if (fall > 0 && rise > 0) return rise >= fall ? base : -base;
-      return fall >= rise ? -base : base;
-    }
-
-    // 普通世界：大事件→紧张升，缓和→紧张降
-    const rise = countHits(text, RISE_WORDS);
-    let fall = countHits(text, FALL_WORDS);
-    // 没有任何关键词命中 → 不结算（避免普通事件被误判抬升）
-    if (rise === 0 && fall === 0) return 0;
-    // ① 缓和被否定/被升级打断（谈判破裂/停火失败/冲突升级）→ 缓和作废
-    if (fall > 0 && (fail > 0 || ramp > 0)) fall = 0;
-    // ② 坏事加剧 → 强制上升（战争升级/冲突加剧）
-    if (rise > 0 && ramp > 0) return base;
-    // ③ 大事件被化解（叛乱被镇压/魔潮被击退/宣战被阻止）→ 按缓和计
-    if (rise > 0 && fall === 0 && resolve > 0) return -base;
-    // ④ 大事件未遂（入侵失败/政变未遂）→ 方向不明，不结算
-    if (rise > 0 && fall === 0 && fail > 0) return 0;
-    // ⑤ 坏事件被化解且同为缓和（平息叛乱/魔潮被击退）→ 缓和优先
-    if (rise > 0 && fall > 0 && resolve > 0) return -base;
-    // ⑥ 事件并行且方向冲突 → 保守取升
-    if (rise > 0 && fall > 0) return base;
-    if (rise === 0 && fall === 0) return 0;
-    return rise >= fall ? base : -base;
   }
 
   // 清理已结算表：新闻从 动态新闻 删除 → 移除其影响（事件结束，紧张度回落）；
@@ -285,13 +167,12 @@
         }
         if (Object.prototype.hasOwnProperty.call(settled, title)) continue;
         if (flags.紧张度已落幕 && flags.紧张度已落幕[title]) continue; // 自动落幕的新闻不再复活
-        const scope = promoteScope(title, news.内容, normalizeScope(news.影响范围), ifLine);
-        const impact = computeNewsImpact(title, news.内容, news.重要性, scope, ifLine);
+        const impact = parseDeclaredImpact(news.方向, news.影响度);
         let _f = 0;
         try { _f = Math.max(0, getLastMessageId()); } catch (_e) {}
-        settled[title] = { v: impact, s: scope, f: _f };
+        settled[title] = { v: impact, f: _f };
         if (impact !== 0) {
-          console.log(`[紧张度] 新闻「${title}」结算影响 ${impact > 0 ? '+' : ''}${impact}（范围：${scope}）${ifLine ? '（IF线反转）' : ''}`);
+          console.log(`[紧张度] 新闻「${title}」结算影响 ${impact > 0 ? '+' : ''}${impact}（申报：${news.方向 || '?'}·${news.影响度 || '?'}）`);
           // 方案五：世界大事记（只记录有实际影响的新闻）
           if (!flags.紧张度大事记 || !Array.isArray(flags.紧张度大事记)) flags.紧张度大事记 = [];
           flags.紧张度大事记.push({ 日期: news.日期 || '', 标题: title, 影响: impact });
@@ -302,8 +183,8 @@
       // 1.5) 清理已结算表（已删除新闻移除影响 + 上限保护）
       cleanupSettled(newsMap, settled, flags.紧张度已落幕);
 
-      // 2) 期望值 = 基线 + Σ(影响)，按范围分组 + 区域影响封顶，clamp 0~100 并覆盖（防 AI 直接改）
-      let worldDelta = 0, contDelta = 0, regDelta = 0;
+      // 2) 期望值 = 基线 + Σ(影响)（单桶求和·无分层封顶），clamp 0~100 并覆盖（防 AI 直接改）
+      let totalDelta = 0;
       let _curFloor = 0, _newest = 0;
       try { _curFloor = Math.max(0, getLastMessageId()); } catch (_e) {}
       for (const _t in settled) { const _rf = settled[_t]?.f; if (typeof _rf === 'number' && _rf > _newest) _newest = _rf; }
@@ -324,18 +205,9 @@
           continue;
         }
         const v = _decay(settledValue(rec), rec.f);
-        const s = (rec && typeof rec === 'object' && rec.s) ? rec.s : '大陆';
-        if (s === '世界') worldDelta += v;
-        else if (s === '区域') regDelta += v;
-        else contDelta += v;
+        totalDelta += v;
       }
-      // 区域影响封顶：区域性事件再多，全球紧张度也只波动 ±15（王国内战 ≠ 全球决战）
-      regDelta = Math.max(-15, Math.min(15, regDelta));
-      // ── 平衡补丁：世界/大陆正向封顶（负向不设限）——决战期必须由世界级事件支撑，
-      //    中小新闻堆量只能到危机期；大事件淡出后（衰减/过期）紧张度自然回落
-      worldDelta = Math.max(-30, Math.min(25, worldDelta));
-      contDelta = Math.max(-45, Math.min(35, contDelta));
-      let expect = flags.紧张度基线 + worldDelta + contDelta + regDelta;
+      let expect = flags.紧张度基线 + totalDelta;
       expect = Math.max(0, Math.min(100, Math.round(expect)));
 
       // ── 终局阶强制决战期：魔王分身按事件轴抵达终局阶（≥圣光历1500年1月）时，紧张度保底 85。
@@ -451,16 +323,16 @@
   let echoRunning = false;
   // 缓和类行为（好事 → 紧张度下降方向）
   const ECHO_DOWN_RULES = [
-    { re: /(?:斩杀|讨伐|击杀|击毙|歼灭|诛杀|杀死)[^。！？\n]{0,30}(?:魔王|灾兽|古龙|传说级|神话级|上古魔物|魔将)/, imp: '极高', scope: '世界', tmpl: '强敌伏诛·{obj}', contentTpl: '冒险者于{place}成功讨伐{obj}，魔潮防线为之一振，各方势力大受鼓舞' },
-    { re: /(?:救出|拯救|护送|守护|救下)[^。！？\n]{0,30}(?:国王|女王|圣女|公主|王子|要人|教皇|大祭司|英雄)/, imp: '高', scope: '大陆', tmpl: '要人获救·{obj}', contentTpl: '{obj}在{place}被成功救出，事态转危为安' },
-    { re: /(?:击退|驱逐|化解|阻止|粉碎|剿灭)[^。！？\n]{0,30}(?:魔潮|入侵|围城|政变|阴谋|袭击|瘟疫)/, imp: '高', scope: '大陆', tmpl: '危机化解·{obj}', contentTpl: '{obj}在{place}被成功化解，当地重归平静' },
+    { re: /(?:斩杀|讨伐|击杀|击毙|歼灭|诛杀|杀死)[^。！？\n]{0,30}(?:魔王|灾兽|古龙|传说级|神话级|上古魔物|魔将)/, mag: '极大', tmpl: '强敌伏诛·{obj}', contentTpl: '冒险者于{place}成功讨伐{obj}，魔潮防线为之一振，各方势力大受鼓舞' },
+    { re: /(?:救出|拯救|护送|守护|救下)[^。！？\n]{0,30}(?:国王|女王|圣女|公主|王子|要人|教皇|大祭司|英雄)/, mag: '中', tmpl: '要人获救·{obj}', contentTpl: '{obj}在{place}被成功救出，事态转危为安' },
+    { re: /(?:击退|驱逐|化解|阻止|粉碎|剿灭)[^。！？\n]{0,30}(?:魔潮|入侵|围城|政变|阴谋|袭击|瘟疫)/, mag: '中', tmpl: '危机化解·{obj}', contentTpl: '{obj}在{place}被成功化解，当地重归平静' },
   ];
   // 紧张类行为（坏事 → 紧张度上升方向）
   const ECHO_UP_RULES = [
-    { re: /(?:刺杀|弑杀|杀害|毒杀|谋杀)[^。！？\n]{0,30}(?:国王|大公|教皇|女王|领袖|将军|主教|要人)/, imp: '极高', scope: '世界', tmpl: '要人遇刺·{obj}', contentTpl: '{obj}在{place}遇刺身亡，震动朝野，各方势力蠢蠢欲动' },
-    { re: /(?:背叛|背约|决裂|反目|叛变|叛逃|倒戈|兵变)/, imp: '高', scope: '大陆', tmpl: '重大背叛·{obj}', contentTpl: '{obj}的背叛在{place}引发剧烈震荡，局势骤然紧张' },
-    { re: /(?:摧毁|攻破|攻陷|焚毁|劫掠|屠城|血洗)[^。！？\n]{0,30}(?:要塞|堡垒|城市|王都|据点|基地|村镇|圣地)/, imp: '极高', scope: '世界', tmpl: '城破·{obj}', contentTpl: '{obj}在{place}被攻破，战火蔓延，流民四散' },
-    { re: /(?:政变|篡位|夺权|废黜)/, imp: '高', scope: '大陆', tmpl: '政权剧变·{obj}', contentTpl: '{place}发生{obj}，政权更迭引发连锁反应' },
+    { re: /(?:刺杀|弑杀|杀害|毒杀|谋杀)[^。！？\n]{0,30}(?:国王|大公|教皇|女王|领袖|将军|主教|要人)/, mag: '极大', tmpl: '要人遇刺·{obj}', contentTpl: '{obj}在{place}遇刺身亡，震动朝野，各方势力蠢蠢欲动' },
+    { re: /(?:背叛|背约|决裂|反目|叛变|叛逃|倒戈|兵变)/, mag: '中', tmpl: '重大背叛·{obj}', contentTpl: '{obj}的背叛在{place}引发剧烈震荡，局势骤然紧张' },
+    { re: /(?:摧毁|攻破|攻陷|焚毁|劫掠|屠城|血洗)[^。！？\n]{0,30}(?:要塞|堡垒|城市|王都|据点|基地|村镇|圣地)/, mag: '极大', tmpl: '城破·{obj}', contentTpl: '{obj}在{place}被攻破，战火蔓延，流民四散' },
+    { re: /(?:政变|篡位|夺权|废黜)/, mag: '中', tmpl: '政权剧变·{obj}', contentTpl: '{place}发生{obj}，政权更迭引发连锁反应' },
   ];
   function matchEcho(text) {
     for (const r of ECHO_DOWN_RULES) { const m = String(text).match(r.re); if (m) return { rule: r, raw: m[0], dir: -1 }; }
@@ -483,8 +355,8 @@
     newsMap[title] = {
       内容: rule.contentTpl.replace('{place}', place).replace('{obj}', String(echo.raw).slice(0, 26)),
       日期: date,
-      重要性: rule.imp,
-      影响范围: rule.scope,
+      方向: (echo.dir > 0 ? '加剧' : '缓和'),
+      影响度: rule.mag,
       来源: '冒险者公会',
       是否过期: '否',
       相关地点: place,
@@ -618,32 +490,26 @@
 
   // ---- 提取窗口展示数据 ----
   function extractTensionData(statData) {
-    const d = { tension: 35, level: '暗流期', lastEvent: '无近期大事件', curLoc: '未知之地', worldBrief: '', tasks: [], news: [], dyn: '', base: 35, worldDelta: 0, contDelta: 0, regDelta: 0, regDeltaRaw: 0, settledItems: [] };
+    const d = { tension: 35, level: '暗流期', lastEvent: '无近期大事件', curLoc: '未知之地', worldBrief: '', tasks: [], news: [], dyn: '', base: 35, totalDelta: 0, settledItems: [] };
     if (!statData || typeof statData !== 'object') return d;
     const flags = statData.$flags || {};
     const t = flags.紧张度 || {};
     if (typeof t.当前值 === 'number') d.tension = t.当前值;
     if (t.等级) d.level = t.等级;
     if (t.上次触发事件) d.lastEvent = t.上次触发事件;
-    // ★ 方案1：贡献分解（基线 + 世界级/大陆级/区域级合计 + 已结算新闻明细）
+    // ★ 贡献分解（基线 + Σ(新闻申报影响) + 已结算新闻明细）
     d.base = (typeof flags.紧张度基线 === 'number') ? flags.紧张度基线 : 35;
     const settled = flags.紧张度已结算新闻 || {};
-    let worldDelta = 0, contDelta = 0, regDelta = 0;
+    let totalDelta = 0;
     const items = [];
     for (const nt in settled) {
       const rec = settled[nt];
       const v = (typeof rec === 'number') ? rec : (rec && typeof rec.v === 'number' ? rec.v : 0);
-      const s = (rec && typeof rec === 'object' && rec.s) ? rec.s : '大陆';
-      if (s === '世界') worldDelta += v;
-      else if (s === '区域') regDelta += v;
-      else contDelta += v;
+      totalDelta += v;
       const news = (statData.世界 && statData.世界.世界见闻 && statData.世界.世界见闻.动态新闻 && statData.世界.世界见闻.动态新闻[nt]) || {};
-      items.push({ title: nt, v, s, expired: news.是否过期 === '是', date: news.日期 || '' });
+      items.push({ title: nt, v, expired: news.是否过期 === '是', date: news.日期 || '' });
     }
-    d.worldDelta = worldDelta;
-    d.contDelta = contDelta;
-    d.regDeltaRaw = regDelta;
-    d.regDelta = Math.max(-15, Math.min(15, regDelta)); // 区域封顶（与结算逻辑一致）
+    d.totalDelta = totalDelta;
     d.settledItems = items;
     d.activeCount = items.filter(x => !x.expired).length; // 本阶段正在发酵的事件数（调整③）
     // 方案五：世界大事记（最近 12 条，倒序展示）
@@ -1036,13 +902,11 @@
     if (it.v < 0) return '<span class="tw-news-imp imp-minus">↓' + String(it.v) + '</span>';
     return '';
   }
-  // 紧张度构成文本（方案1：基线 + 各范围合计，区域封顶时注明）
+  // 紧张度构成文本（基线 + 新闻申报合计）
   function buildCompText(d) {
     const parts = [];
     parts.push('基线 ' + d.base);
-    if (d.worldDelta !== 0) parts.push('世界级 ' + fmtDelta(d.worldDelta));
-    if (d.contDelta !== 0) parts.push('大陆级 ' + fmtDelta(d.contDelta));
-    if (d.regDelta !== 0) parts.push('区域级 ' + fmtDelta(d.regDelta) + (d.regDeltaRaw !== d.regDelta ? '（原 ' + fmtDelta(d.regDeltaRaw) + '，已封顶±15）' : ''));
+    if (d.totalDelta) parts.push('新闻合计 ' + fmtDelta(Math.round(d.totalDelta)));
     return parts.length > 1 ? '构成：' + parts.join(' + ') : '';
   }
   // ★ 烈度块：显示当前世界的烈度形态（对应《纪元触发器》的烈度调制层）
