@@ -3055,12 +3055,12 @@ var TRT_TECH = {
                 if (end !== -1) cand = cand.substring(start, end + 1);
             }
             // 3) 去闭合括号前的尾随逗号 + 行尾分隔符
-            cand = cand.replace(/,\s*([\]}])/g, '$1');
+            cand = cand.replace(/,\s*([\]}])/g, function (m, p1) { return p1; });
             cand = cand.replace(/[,;]+\s*$/g, '');
             // 4) 解析：修复尾随逗号重试；仍失败抛带预览错误
             try { return JSON.parse(cand); }
             catch (e) {
-                var fixed = cand.replace(/,\s*([\]}])/g, '$1');
+                var fixed = cand.replace(/,\s*([\]}])/g, function (m, p1) { return p1; });
                 try { return JSON.parse(fixed); }
                 catch (e2) {
                     throw new Error('JSON解析失败：' + e2.message + ' | 原文尾部: …' + cand.slice(-120));
@@ -3090,7 +3090,7 @@ var TRT_TECH = {
             }
             if (end === -1) return null;
             cand = cand.substring(start, end + 1);
-            cand = cand.replace(/,\s*([\]}])/g, '$1');
+            cand = cand.replace(/,\s*([\]}])/g, function (m, p1) { return p1; });
             try { return JSON.parse(cand); }
             catch (e) { return null; }
         }
@@ -4860,7 +4860,20 @@ var TRT_TECH = {
                 // 计算年龄成长差额（主动/被动共用；skip=true 表示无年龄）
         // 只认 $flags.年龄成长 发放记录，不看总属性——升级所得属性点不干扰年龄成长
         // 年龄成长记录读/写：存酒馆 chat 变量（与 MVU schema 校验解耦，跨楼层 100% 持久，不因 AI 变量更新丢失）
+        // 本聊天唯一键（per-chat 首次判定，避免 initvar 预置的 年龄成长:0 被误当作"已记录"）
+        function ageChatKey() {
+            var cid = 'default';
+            try { if (typeof getCurrentChatId === 'function') cid = getCurrentChatId() || 'default'; } catch (e) {}
+            return 'iz_age_init_' + cid;
+        }
         function readAgeGrowthIssued() {
+            // 优先 Mvu API（与 MVU 内存同步，不被下一楼变量重建覆盖回旧值）
+            try {
+                if (typeof Mvu !== 'undefined' && Mvu.getMvuData) {
+                    var md = Mvu.getMvuData({ type: 'chat' });
+                    return parseInt(_.get(md, 'stat_data.$flags.年龄成长', 0), 10) || 0;
+                }
+            } catch (e) {}
             try {
                 var v = typeof getVariables === 'function' ? getVariables({ type: 'chat' }) : {};
                 return parseInt(_.get(v, 'stat_data.$flags.年龄成长', 0), 10) || 0;
@@ -4868,16 +4881,24 @@ var TRT_TECH = {
         }
         function writeAgeGrowthIssued(val) {
             try {
+                try { localStorage.setItem(ageChatKey(), '1'); } catch (e) {}
+                if (typeof Mvu !== 'undefined' && Mvu.getMvuData && Mvu.replaceMvuData) {
+                    var md = Mvu.getMvuData({ type: 'chat' });
+                    _.set(md, 'stat_data.$flags.年龄成长', val);
+                    Mvu.replaceMvuData(md, { type: 'chat' });
+                    return;
+                }
                 var v = typeof getVariables === 'function' ? getVariables({ type: 'chat' }) : {};
                 _.set(v, 'stat_data.$flags.年龄成长', val);
                 if (typeof replaceVariables === 'function') replaceVariables(v, { type: 'chat' });
             } catch (e) { console.warn('[年龄成长] 记录写入失败:', e); }
         }
         function hasAgeGrowthRecord() {
-            try {
-                var v = typeof getVariables === 'function' ? getVariables({ type: 'chat' }) : {};
-                return !!(v && v.stat_data && v.stat_data.$flags && v.stat_data.$flags.年龄成长 !== undefined);
-            } catch (e) { return false; }
+            // 首次判定（二重）：①本聊天已运行过（localStorage per-chat 标记）②MVU 记录 >0
+            // initvar 预置的 年龄成长:0 不再被误判为"已记录"（此前导致开局即补满 20 点并每楼弹窗）
+            try { if (localStorage.getItem(ageChatKey()) === '1') return true; } catch (e) {}
+            try { if (readAgeGrowthIssued() > 0) return true; } catch (e) {}
+            return false;
         }
         function calcAgeGrowth(stat, actor) {
             var age = parseInt(_.get(actor, '基础信息.年龄', 0), 10) || 0;
