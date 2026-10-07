@@ -94,7 +94,7 @@ env.setApplier({
   await env.eventEmit('CHAT_COMPLETION_PROMPT_READY', payload);
   const injected = payload.chat[payload.chat.length - 1].content;
   check('T4a 注入战斗协议', injected.includes('回合协议·战斗') && injected.includes('战斗结算规则'), injected.slice(0, 80));
-  check('T4b 注入骰值表', injected.includes('【回合骰值表】') && injected.includes('d20'));
+  check('T4b 不再自产骰值表(条款来自世界书,骰值由预设骰子池供数)', injected.includes('回合骰值表·最高优先级') || !injected.includes('【回合骰值表】'));
   check('T4c 注入NPC输出规则', injected.includes('NPC与敌人输出') && injected.includes('[NPC角色/敌人输出规则]'));
   // 去重：再次相同 payload（含已注入标记）→ 不重复追加
   const lenBefore = payload.chat.length;

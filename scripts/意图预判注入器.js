@@ -44,8 +44,7 @@
       re: /(死亡|濒死|死亡豁免|灵魂撕磨|回溯|丧命|阵亡|毙命|一命呜呼)/
     }
   };
-  // 检定意图：只触发骰值表（[判定规则] 为常驻，无需注入）
-  const CHECK_RE = /(检定|掷骰|试试看|尝试(说服|攀爬|开锁|潜入)|说服|攀爬|开锁|调查|搜索|察觉|隐匿|潜行|欺骗|恐吓|威吓|医疗|治疗检查|专注|豁免|.perception|察觉危险)/;
+  // 检定意图不注入：[判定规则] 为常驻条目，骰值由用户预设的 [骰子池] 宏提供
 
   let bookCache = null;
   async function loadBook() {
@@ -70,15 +69,7 @@
     for (const l of lines) { const t = l.trim(); if (t.length >= 6) return t.slice(0, 24); }
     return String(content || '').trim().slice(0, 24);
   }
-  function roll(sides) { return 1 + Math.floor(Math.random() * sides); }
-  function dicePoolText() {
-    return '  d20：' + [roll(20), roll(20), roll(20)].join('、')
-      + '\n  d100：' + roll(100)
-      + '\n  d6：' + [roll(6), roll(6)].join('、')
-      + '\n  d8：' + [roll(8), roll(8)].join('、')
-      + '\n  d10：' + [roll(10), roll(10)].join('、')
-      + '\n  d12：' + roll(12);
-  }
+  // 骰值生成已移除：用户预设的 [骰子池]（{{roll}} 宏）承担，避免重复
   function lastUserContent(chat) {
     for (var i = chat.length - 1; i >= 0; i--) {
       if (chat[i] && chat[i].role === 'user') return String(chat[i].content || '');
@@ -119,8 +110,8 @@
           if (intent === '战斗' && battleActive) { hits.push(intent); continue; }
           if (cfg.re.test(userText)) hits.push(intent);
         }
-        const checkHit = CHECK_RE.test(userText);
-        if (!hits.length && !checkHit) return;
+        // 检定意图不注入规则（[判定规则] 为常驻），仅战斗/生产/国战/死亡协议需要当轮补位
+        if (!hits.length) return;
 
         const wb = await loadBook();
         if (!wb) return;
@@ -140,21 +131,17 @@
           }
           parts.push(block);
         }
-        // 骰值表（任一意图命中或检定意图都给；每轮重新生成）
-        const diceMarker = '【回合骰值表】';
-        if (!chatHas(chat, diceMarker)) {
-          parts.push(diceMarker + '\n本回合所有随机判定必须且只能使用下表骰值（脚本预生成，禁止自行编造骰值）：\n' + dicePoolText() + '\n（同一骰值不得用于同一回合内的第二次独立判定；表中无对应骰面时，取最接近的可用骰值并在叙事中合理化。）');
-        }
+        // 骰值：由用户预设中的 [骰子池]（{{roll}} 宏）每轮随机注入，本脚本不再重复生成。
         if (!parts.length) return;
         chat.push({ role: 'system', content: parts.join('\n\n') });
-        console.info(TAG + ' 本轮注入：' + hits.join('/') + (checkHit ? (hits.length ? '+' : '') + '检定骰值' : ''));
+        console.info(TAG + ' 本轮注入：' + hits.join('/'));
       } catch (e) {
         console.warn(TAG + ' 处理失败:', e);
       }
     });
     // 聊天切换后刷新世界书缓存（防改书后拿到旧内容）
     eventOn(tavern_events.CHAT_CHANGED, function () { bookCache = null; });
-    console.log(TAG + ' 已加载（战斗/生产/国战/死亡意图当轮注入 + 回合骰值表）');
+    console.log(TAG + ' 已加载（战斗/生产/国战/死亡意图当轮注入；骰值由预设骰子池承担）');
   };
 
   $(init);
