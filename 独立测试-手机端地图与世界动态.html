@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手机端测试 - 交互地图+世界动态</title>
+<script src="https://testingcf.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://testingcf.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
+<style>
+  body { margin:0; background: linear-gradient(160deg,#1a1410,#2a2018); min-height:100vh; font-family: sans-serif; overflow-x:hidden; }
+  #mock-bg { position:fixed; inset:0; display:flex; align-items:flex-start; justify-content:center; color:#6b5a3e; font-size:14px; padding-top:40px; user-select:none; pointer-events:none; }
+</style>
+<script>
+/* 页面日志捕获（供 evaluate 读取） */
+window.__LOGS = [];
+['log','info','warn','error'].forEach(k=>{
+  const orig = console[k].bind(console);
+  console[k] = (...a)=>{ try{ window.__LOGS.push([k, a.map(x=>{ try{ return typeof x==='string'?x:JSON.stringify(x).slice(0,300); }catch{ return String(x); } }).join(' ')]); }catch{} orig(...a); };
+});
+window.onerror = (m,s,l,c)=>{ window.__LOGS.push(['pageerror', m+' @'+(s||'')+':'+l]); };
+
+/* ===== 酒馆助手环境 Mock ===== */
+(function(){
+  const store = {}; // 模拟脚本变量存储
+  const log = [];
+  function rec(fn, args){ log.push([fn, JSON.stringify(args).slice(0,200)]); try{ console.info('[MOCK]', fn, ...args); }catch{} }
+
+  // 有代表性的 stat_data 样本（世界动态窗口数据源）
+  const STAT = {
+    '$flags': {
+      '紧张度': { '当前值': 47, '等级': '动荡期', '上次触发事件': '边境村庄遭袭' },
+      '紧张度基线': 35,
+      '紧张度已结算新闻': {
+        '魔族先锋越过界桥': { v: 8, s: '大陆' },
+        '南海联邦舰队整备': { v: 4, s: '区域' },
+      },
+      '紧张度大事记': [
+        { 日期: '圣光历1497年3月', 标题: '界桥开启', 影响: '魔族先锋越界' },
+      ],
+    },
+    '世界': {
+      '当前地点': '塔伦镇',
+      '日期': '圣光历1497年4月2日',
+      '世界见闻': {
+        '世界概况': '魔王纪元前夜，诸国戒备。',
+        '动态新闻': {
+          '魔族先锋越过界桥': { 内容: '魔族先锋部队已被目击越过北方界桥。', 相关地点: '北境界桥', 日期: '1497.3.28', 重要性: '高', 是否过期: '否' },
+          '南海联邦舰队整备': { 内容: '南海联邦集结舰队防御海上袭击。', 相关地点: '南海', 日期: '1497.4.1', 重要性: '中', 是否过期: '否' },
+        },
+      },
+    },
+    '主角': { '基础信息': { '姓名': '测试者' }, '任务': { '调查界桥异动': { 状态: '进行中', 内容: '前往北境查明魔族动向' } } },
+  };
+
+  window.SillyTavern = {
+    getCurrentChatId: () => 'mock-chat-手机测试',
+    getContext: () => ({ chat: [] }),
+  };
+  window.toastr = { success: m=>console.info('[toastr]',m), error: m=>console.warn('[toastr]',m), warning: m=>console.info('[toastr]',m), info: m=>console.info('[toastr]',m) };
+
+  window.getVariables = (opt) => { rec('getVariables',[opt]); return JSON.parse(JSON.stringify(store)); };
+  window.replaceVariables = (v, opt) => { rec('replaceVariables',[opt]); Object.assign(store, JSON.parse(JSON.stringify(v||{}))); return true; };
+  window.insertOrAssignVariables = (v, opt) => { rec('insertOrAssignVariables',[opt]); Object.assign(store, JSON.parse(JSON.stringify(v||{}))); return true; };
+  window.getChatMessages = (id, opt) => { rec('getChatMessages',[id]); return []; };
+  window.setChatMessages = async () => true;
+  window.createChatMessages = async () => ({});
+  window.deleteChatMessages = async () => true;
+  window.getScriptId = () => 'mock-script-id';
+  window.getIframeName = () => 'mock-iframe';
+  // ★ 必须同步返回数组（紧张度脚本对返回值直接 .some/.push）
+  window.getScriptButtons = () => (window.__MOCK_BUTTONS = window.__MOCK_BUTTONS || []);
+  window.replaceScriptButtons = (btns) => { window.__MOCK_BUTTONS = btns; console.info('[MOCK] replaceScriptButtons', btns.map(b=>b.name)); return true; };
+  window.getScripts = async () => [];
+  window.replaceScripts = async () => true;
+  window.getScriptVariables = async () => ({});
+  window.replaceScriptVariables = async () => true;
+  window.createScriptButtons = async () => true;
+  window.deleteScriptButtons = async () => true;
+  window.updateScriptButton = async () => true;
+  window.getButtonEvent = (name) => String(name); // 事件对象=名字字符串，eventEmit 按名触发
+  window.replaceButtonEvent = async () => true;
+  window.triggerSlash = async () => '';
+  window.errorCatched = (fn) => async function(...a){ try{ return await fn(...a); }catch(e){ console.error('[errorCatched]', e); } };
+  window.generate = async () => 'mock生成';
+  window.generateRaw = async () => 'mock生成';
+  window.getWorldbook = async (name) => {
+    rec('getWorldbook',[name]);
+    if (String(name).includes('纪元触发器')) return [{ name: '纪元触发器', content: '【纪元触发器·测试输出】当前纪元：变革纪·觉醒期。魔王尚未降世，边境摩擦频繁。' }];
+    return [];
+  };
+  window.getWorldbookNames = () => ['伊瑟利亚3.7'];
+  window.replaceWorldbook = async () => true;
+  window.getCharData = async () => ({});
+  window.injectPrompts = async () => true;
+  window.getTavernRegexes = async () => [];
+  window.replaceTavernRegexes = async () => true;
+
+  const handlers = {};
+  window.tavern_events = new Proxy({}, { get: (t,k)=> k });
+  window.eventOn = (name, fn) => { (handlers[name] = handlers[name]||[]).push(fn); return { id: 1, name }; };
+  window.eventOnReturn = window.eventOn;
+  window.eventEmit = (name, ...a) => { rec('eventEmit',[name]); (handlers[name]||[]).forEach(f=>{ try{f(...a)}catch(e){console.error(e)} }); };
+  window.eventOnce = window.eventOn;
+  window.Mvu = { getMvuData: () => ({ stat_data: JSON.parse(JSON.stringify(STAT)) }), events: { VARIABLE_UPDATE_ENDED: 'VARIABLE_UPDATE_ENDED' } };
+  window.waitGlobalInitialized = async (name) => { console.info('[MOCK] waitGlobalInitialized', name); return true; };
+  window.TavernHelper = {
+    getVariables: window.getVariables, replaceVariables: window.replaceVariables,
+    insertOrAssignVariables: window.insertOrAssignVariables,
+    getChatMessages: window.getChatMessages, setChatMessages: window.setChatMessages,
+    getScriptButtons: window.getScriptButtons, replaceScriptButtons: window.replaceScriptButtons,
+    getScriptId: window.getScriptId, triggerSlash: window.triggerSlash,
+    generate: window.generate, generateRaw: window.generateRaw,
+    getWorldbook: window.getWorldbook, replaceWorldbook: window.replaceWorldbook,
+  };
+  window.__MOCK_LOG = log;
+  window.__MOCK_STORE = store;
+  console.info('[MOCK] 酒馆助手环境已就绪');
+})();
+</script>
+</head>
+<body>
+  <div id="mock-bg">（独立测试背景 — 🗺 地图球应在右下角；世界动态按钮事件可用 __emitWorldDyn() 触发）</div>
+  <script>
+    // 供外部 evaluate 快捷触发世界动态窗口
+    window.__emitWorldDyn = () => window.eventEmit('🗞️ 世界动态');
+  </script>
+  <script type="module">
+    try {
+      await import('./scripts/交互地图.js?v=' + Date.now());
+      console.info('[MOCK] 交互地图加载完成');
+      await import('./scripts/紧张度.js?v=' + Date.now());
+      console.info('[MOCK] 紧张度加载完成');
+      document.title = '手机端测试 - 已加载';
+    } catch(e) {
+      console.error('[MOCK] 脚本加载失败', e);
+      document.title = '手机端测试 - 加载失败: ' + (e.message || e);
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;left:10px;bottom:10px;right:10px;background:#5a1f1f;color:#ffb0b0;padding:10px;border-radius:8px;font-size:12px;white-space:pre-wrap;z-index:999999';
+      d.textContent = '脚本加载失败: ' + (e.stack || e.message || e);
+      document.body.appendChild(d);
+    }
+  </script>
+</body>
+</html>

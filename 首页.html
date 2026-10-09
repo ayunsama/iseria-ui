@@ -2891,6 +2891,17 @@ div[style*="dashed"] > div:first-child { color: #6b2e2e !important; letter-spaci
     </div><!-- /jrpg-cc-wrapper -->
 
     <script>
+// 世界书名自动探测（3.7 改名兼容：新名优先，旧名兜底）
+async function _iseriaBook() {
+  if (window.__iseriaBookName) return window.__iseriaBookName;
+  const _cands = ['伊瑟利亚3.7', '伊瑟利亚大陆3.7', '伊瑟利亚3.4', '伊瑟利亚大陆3.6', '伊瑟利亚'];
+  for (const _n of _cands) {
+    try { const _e = await getWorldbook(_n); if (Array.isArray(_e) && _e.length) { window.__iseriaBookName = _n; return _n; } } catch (_err) {}
+  }
+  window.__iseriaBookName = '伊瑟利亚3.7';
+  return window.__iseriaBookName;
+}
+
 window.toggleMeimeiDLC=toggleMeimeiDLC;window.toggleDayanDLC=toggleDayanDLC;window.toggleApocalypseDLC=toggleApocalypseDLC;window.toggleMainQuestEntry=toggleMainQuestEntry;window.submitCC=submitCC;window.copyResult=copyResult;window.applyPreset=applyPreset;window.changeAttr=changeAttr;window.changeAlloc=changeAlloc;window.onLevelChange=onLevelChange;window.updateRaceBonus=updateRaceBonus;window.updateBlessingDetail=updateBlessingDetail;window.updateEraDetail=updateEraDetail;window.checkFaithAndRace=checkFaithAndRace;window.checkLocationAndClass=checkLocationAndClass;window.switchEquipTab=switchEquipTab;window.clearInventory=clearInventory;window.calcStats=calcStats;window.updateClass=updateClass;window.selectHeroSpirit=selectHeroSpirit;window.toggleNpcEdit=toggleNpcEdit;window.toggleNpcDetail=toggleNpcDetail;
 
         // ============================================================
@@ -3155,7 +3166,7 @@ window.toggleMeimeiDLC=toggleMeimeiDLC;window.toggleDayanDLC=toggleDayanDLC;wind
         async function toggleMainQuestEntry(checked) {
             try {
                 for (const name of questEntryNames) {
-                    await ensureQuestEntry('伊瑟利亚3.4', name, checked);
+                    await ensureQuestEntry((await _iseriaBook()), name, checked);
                 }
                 console.log(`✅ 主线相关条目已${checked ? '启用' : '禁用'}`);
             } catch (e) {
@@ -3188,10 +3199,10 @@ window.toggleMeimeiDLC=toggleMeimeiDLC;window.toggleDayanDLC=toggleDayanDLC;wind
                 // 禁用所有英灵（普通 + IF线）
                 var allEntries = allSpiritEntries.concat(apocalypseSpiritEntries);
                 for (const name of allEntries) {
-                    await setWIEntryField('伊瑟利亚3.4', name, 'enabled', false);
+                    await setWIEntryField((await _iseriaBook()), name, 'enabled', false);
                 }
                 if (newSpirit) {
-                    await setWIEntryField('伊瑟利亚3.4', newSpirit, 'enabled', true);
+                    await setWIEntryField((await _iseriaBook()), newSpirit, 'enabled', true);
                     syncStatus.innerText = '✓ 世界书已同步';
                     syncStatus.style.color = '#27ae60';
                 } else {
@@ -3208,7 +3219,7 @@ window.toggleMeimeiDLC=toggleMeimeiDLC;window.toggleDayanDLC=toggleDayanDLC;wind
         (async function initAllSpiritEntries() {
             for (const name of allSpiritEntries) {
                 try {
-                    await ensureSpiritEntry('伊瑟利亚3.4', name);
+                    await ensureSpiritEntry((await _iseriaBook()), name);
                 } catch (e) {
                     console.error(`初始化英灵条目 ${name} 失败:`, e);
                 }
@@ -4121,12 +4132,12 @@ window.toggleMeimeiDLC=toggleMeimeiDLC;window.toggleDayanDLC=toggleDayanDLC;wind
                     var allEntries = (allSpiritEntries || []).concat(apocalypseSpiritEntries || []);
                     for (var si = 0; si < allEntries.length; si++) {
                         if (typeof setWIEntryField === 'function') {
-                            await setWIEntryField('伊瑟利亚3.4', allEntries[si], 'enabled', false);
+                            await setWIEntryField((await _iseriaBook()), allEntries[si], 'enabled', false);
                         }
                     }
                     // 激活索菲亚
                     if (typeof setWIEntryField === 'function') {
-                        await setWIEntryField('伊瑟利亚3.4', spiritValue, 'enabled', true);
+                        await setWIEntryField((await _iseriaBook()), spiritValue, 'enabled', true);
                     }
                     // 更新UI
                     document.querySelectorAll('.jrpg-spirit-card').forEach(function(c) { c.classList.remove('selected'); });
@@ -4866,12 +4877,12 @@ function applyBattlefieldHeroPreset() {
             var allEntries = (allSpiritEntries || []).concat(apocalypseSpiritEntries || []);
             for (var si = 0; si < allEntries.length; si++) {
                 if (typeof setWIEntryField === 'function') {
-                    await setWIEntryField('伊瑟利亚3.4', allEntries[si], 'enabled', false);
+                    await setWIEntryField((await _iseriaBook()), allEntries[si], 'enabled', false);
                 }
             }
             // 激活雷恩
             if (typeof setWIEntryField === 'function') {
-                await setWIEntryField('伊瑟利亚3.4', spiritValue, 'enabled', true);
+                await setWIEntryField((await _iseriaBook()), spiritValue, 'enabled', true);
             }
             // 更新UI
             document.querySelectorAll('.jrpg-spirit-card').forEach(function(c) { c.classList.remove('selected'); });
@@ -5345,7 +5356,7 @@ function applyUndyingPreset() {
         for (var si = 0; si < apocalypseSpiritEntries.length; si++) {
             try {
                 if (typeof ensureSpiritEntry === 'function') {
-                    await ensureSpiritEntry('伊瑟利亚3.4', apocalypseSpiritEntries[si]);
+                    await ensureSpiritEntry((await _iseriaBook()), apocalypseSpiritEntries[si]);
                 }
             } catch(e) {}
         }
@@ -5420,11 +5431,11 @@ function applyUndyingPreset() {
                 var allEntries = (allSpiritEntries || []).concat(apocalypseSpiritEntries || []);
                 for (var name of allEntries) {
                     if (typeof setWIEntryField === 'function') {
-                        await setWIEntryField('伊瑟利亚3.4', name, 'enabled', false);
+                        await setWIEntryField((await _iseriaBook()), name, 'enabled', false);
                     }
                 }
                 if (typeof setWIEntryField === 'function') {
-                    await setWIEntryField('伊瑟利亚3.4', '英灵/指引妖精莉耶芙', 'enabled', true);
+                    await setWIEntryField((await _iseriaBook()), '英灵/指引妖精莉耶芙', 'enabled', true);
                 }
             } catch(e) { console.error('英灵同步失败:', e); }
         })();
@@ -10870,7 +10881,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
         async function toggleMeimeiDLC(enable) {
             meimeiDlcEnabled = enable;
             try {
-                const wbName = '伊瑟利亚3.4';
+                const wbName = (await _iseriaBook());
                 for (const entryName of Object.keys(dlcEntriesContent)) {
                     await ensureMeimeiEntry(wbName, entryName, enable);
                 }
@@ -11135,7 +11146,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
         async function toggleDayanDLC(enable) {
             dayanDlcEnabled = enable;
             try {
-                const wbName = '伊瑟利亚3.4';
+                const wbName = (await _iseriaBook());
                 for (const entryName of dayanDlcEntryNames) {
                     await ensureDayanEntry(wbName, entryName, enable);
                 }
@@ -11372,7 +11383,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
         // 首页初始化：确保动态关键词条目与终焉纪元 DLC 条目处于关闭状态（不创建不存在的条目）
         async function initDynamicKeywordDisabledEntries() {
             try {
-                const wbName = '伊瑟利亚3.4';
+                const wbName = (await _iseriaBook());
                 const allNames = dynamicKeywordEntryNames.concat(apocalypseDlcEntryNames);
                 const entries = await getWorldbook(wbName);
                 if (!entries || !Array.isArray(entries)) {
@@ -11450,7 +11461,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
             }
             // 异步处理世界书条目（不阻塞UI）- 使用前缀模糊匹配
             try {
-                const wbName = '伊瑟利亚3.4';
+                const wbName = (await _iseriaBook());
                 const prefix = '[DLC]魔王胜利IF线/终焉纪元';
                 const allEntries = await getWorldbook(wbName);
                 let changed = false;
@@ -11486,7 +11497,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
                     var spName = apocalypseSpiritEntries[si];
                     try {
                         if (typeof ensureSpiritEntry === 'function') {
-                            await ensureSpiritEntry('伊瑟利亚3.4', spName);
+                            await ensureSpiritEntry((await _iseriaBook()), spName);
                         }
                     } catch (e) {
                         console.error('初始化终焉英灵 ' + spName + ' 失败:', e);
@@ -11723,7 +11734,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
         async function toggleApocalypseWorldbookFilter(disableMatched) {
             // 根据关键词模糊匹配世界书条目名，禁用或启用匹配的条目
             try {
-                const wbName = '伊瑟利亚3.4';
+                const wbName = (await _iseriaBook());
                 const entries = await getWorldbook(wbName);
                 if (!entries || !Array.isArray(entries)) {
                     console.warn('⚠ 终焉纪元世界书过滤: 未获取到世界书条目');

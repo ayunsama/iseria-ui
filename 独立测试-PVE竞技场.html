@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>独立测试 - PVE竞技场</title>
+<style>
+  body { margin:0; background: linear-gradient(160deg,#1a1410,#2a2018); min-height:100vh; font-family: sans-serif; }
+  #mock-bg { position:fixed; inset:0; display:flex; align-items:flex-start; justify-content:center; color:#6b5a3e; font-size:14px; padding-top:40px; user-select:none; pointer-events:none; }
+</style>
+<script>
+/* 页面日志捕获 */
+window.__LOGS = [];
+['log','info','warn','error'].forEach(k=>{
+  const orig = console[k].bind(console);
+  console[k] = (...a)=>{ try{ window.__LOGS.push([k, a.map(x=>{ try{ return typeof x==='string'?x:JSON.stringify(x).slice(0,300); }catch{ return String(x); } }).join(' ')]); }catch{} orig(...a); };
+});
+window.onerror = (m,s,l,c)=>{ window.__LOGS.push(['pageerror', m+' @'+(s||'')+':'+l]); };
+
+/* ===== 酒馆助手环境 Mock ===== */
+(function(){
+  window.toastr = { success: m=>console.info('[toastr]',m), error: m=>console.warn('[toastr]',m), warning: m=>console.info('[toastr]',m), info: m=>console.info('[toastr]',m) };
+
+  const STAT = {
+    '主角': {
+      '基础信息': { '姓名': '凯尔', '种族': '人类', '性别': '男', '年龄': 19, '战斗方式': '灵活游斗，以快打慢' },
+      '等阶': '精英', '防御值': 16,
+      '基础属性': { '力量': 14, '敏捷': 18, '体质': 13, '智力': 12, '感知': 15, '魅力': 11 },
+      '基础状态': {
+        'HP': { '当前': 88, '最大': 88 }, 'MP': { '当前': 40, '最大': 40 }, 'SP': { '当前': 55, '最大': 55 },
+        '总等级': 11,
+        '职业信息': { '游侠': { '等级': 6 }, '刺客': { '等级': 5 } },
+      },
+      '资产与能力': {
+        '装备栏': {
+          '双手': { '物品名': '疾风双刃', '品阶': '稀有', '面板效果': { '敏捷': 2 }, '特别机制': '连击：每轮首次攻击可追加一次附带攻击' },
+          '躯干': { '物品名': '影纹皮甲', '品阶': '精良', '面板效果': { '防御值': 4 } },
+        },
+        '角色技能': { '潜行': { '描述': '融入阴影', '等级': 4 }, '鹰眼': { '描述': '弱点洞察', '等级': 3 } },
+        '魔法栏': { '风行术': { '描述': '移速大增并可短距滑空', '消耗MP': 8, '等级': 2 } },
+        '加护': { '疾风之加护': { '描述': '先攻+2，首轮闪避优势' } },
+        '奥义': { '千影裂斩': { '描述': '对单一目标连续六段斩击', '消耗SP': 30, '消耗MP': 0 } },
+      },
+    },
+    '同伴': {}, '$flags': {},
+  };
+
+  const WB = [
+    { name: '角色/杜根·布莱索（拂晓余烬）', content: '杜根·布莱索: 矮人 精英Lv11 HP148/148 SP72/72 防御19 属性 力18敏10体18智10感14魅10 攻击 盾击+7 1d10+4 / 战锤·碎甲+7 2d8+4 破甲' },
+    { name: '角色/露易丝·维拉（拂晓余烬）', content: '（队长·魔剑士）HP 120/120 防御17 精英 Lv8' },
+    { name: '体系/魔兽', content: '一阶常见: 角兔/铁毛狼/毒牙蛇 … 五阶灾兽: 蚀甲/雾嚎/朽龙' },
+    { name: 'DLC/终焉纪元/魔王奥姆尼斯', content: '第一阶段: 神话 Lv22 HP500 防御24; 第二阶段: HP800 防御28; 第三阶段: HP1500 防御15' },
+  ];
+
+  window.Mvu = { getMvuData: () => ({ stat_data: JSON.parse(JSON.stringify(STAT)) }) };
+  window.getVariables = () => ({ stat_data: JSON.parse(JSON.stringify(STAT)) });
+  window.getCharWorldbookNames = () => ({ primary: '伊瑟利亚3.7' });
+  window.getWorldbookNames = () => ['伊瑟利亚3.7'];
+  window.getWorldbook = async () => JSON.parse(JSON.stringify(WB));
+
+  // __MOCK_LLM_MODE: good(标准三段) / notags(无标签) / unclosed(有开无闭) / zh(【】变体)
+  window.generateRaw = async (a) => {
+    const input = typeof a === 'string' ? a : (a?.user_input || '');
+    console.info('[MOCK generateRaw] 收到', input.length, '字, mode=', window.__MOCK_LLM_MODE || 'good');
+    if (input.includes('战力分析')) {
+      return '【总评】精英位中段的灵活游斗刺客。\n【优势】①敏捷顶尖 ②爆发可观 ③战术纵深\n【短板】①HP偏薄 ②魔力量浅\n【推荐】稳赢精英以下 / 旗鼓相当史诗下位 / 勿碰传说以上\n【建议】①补吸血装 ②补位移 ③升级优先体质。';
+    }
+    const mode = window.__MOCK_LLM_MODE || 'good';
+    if (mode === 'notags') {
+      return `双方数据卡整理：杜根·布莱索 精英Lv11 HP148 防御19；霜血九头蛇按描述生成，史诗顶峰Lv16 HP620 防御20，机制为九头再生（一轮内未同时斩落九头则下轮全恢复）。战力对比：孤盾难以单轮破解再生，胜负手在碎甲叠防。
+先攻推演：杜根17 先手。第1轮战锤命中打15，寒息失手。第2轮杜根挨36打出一记暴击48。中盘消耗战后碎甲叠满破防，第10轮终结。
+⚔️竞技场 挑战 我方:[杜根·布莱索] vs 敌方:[霜血九头蛇]
+【第1轮】
+寒雾翻涌，战锤先声夺人。
+| 状态变更: 霜血九头蛇 HP 620 -> 605 |
+【战果】杜根·布莱索 胜利。
+【战后简评】破甲定胜负。`;
+    }
+    if (mode === 'unclosed') {
+      return `<构筑推演>
+杜根·布莱索：精英Lv11。霜血九头蛇：生成数据卡 HP620 防御20，机制九头再生。胜负手=碎甲叠防。
+<战斗推演>
+先攻：杜根17 先手。第1轮战锤命中15。第10轮碎甲叠满后终结，蛇 24→0。
+<战报>
+⚔️竞技场 挑战 我方:[杜根·布莱索] vs 敌方:[霜血九头蛇]
+【第1轮】
+| 状态变更: 霜血九头蛇 HP 620 -> 605 |
+【战果】杜根·布莱索 胜利。
+【战后简评】破甲定胜负。`;
+    }
+    if (mode === 'zh') {
+      return `【构筑推演】
+杜根·布莱索：精英Lv11 HP148。霜血九头蛇生成：史诗顶峰Lv16 HP620 防御20，机制九头再生。
+【战斗推演】
+先攻：杜根17 先手。第1轮命中15。第10轮终结。
+【战报】
+⚔️竞技场 挑战 我方:[杜根·布莱索] vs 敌方:[霜血九头蛇]
+【第1轮】
+| 状态变更: 霜血九头蛇 HP 620 -> 605 |
+【战果】杜根·布莱索 胜利。
+【战后简评】破甲定胜负。`;
+    }
+    if (mode === 'emptyshell') {
+      // 空壳标签 + 真内容混在战报外：验证最短有效长度兜底
+      return `<构筑推演></构筑推演>
+<战斗推演></战斗推演>
+杜根·布莱索：精英Lv11 HP148/148 防御19，位阶+2/×1.5。霜血九头蛇按描述生成：史诗顶峰Lv16，HP620，防御20，机制九头再生（一轮内未同时斩落九头则下轮全恢复），弱火。战力对比：孤盾难以单轮破解再生，胜负手在碎甲叠防与集火节奏。先攻预估：杜根 17 vs 蛇 12。
+⚔️竞技场 挑战 我方:[杜根·布莱索] vs 敌方:[霜血九头蛇]
+【第1轮】
+| 状态变更: 霜血九头蛇 HP 620 -> 605 |
+【战果】杜根·布莱索 胜利。
+【战后简评】破甲定胜负。`;
+    }
+    return `<构筑推演>
+【敌方数据卡·照搬自描述生成】
+[名称|霜血九头蛇（尼弗海姆核心守卫）]
+[等阶|史诗顶峰]
+[等级|16]
+[HP|630/630]
+[防御值|22]
+[属性|力量24(+7)|敏捷12(+1)|体质26(+8)|智力4(-3)|感知14(+2)|魅力8(-1)]
+[攻击|九头压噬|近战|命中修正+10|4d12+7物理伤害]
+[机制|急速再生: 规程/一轮内受到足以致死的AOE斩击同时断九头/未触发：每轮结束时若未达成破解条件，回复被削减的HP直至满状态。]
+[弱点/免疫| 冰霜免疫，非魔法物理抗性]
+【战力与胜负手分析】
+神话位魔王第一阶段具备碾压性的各项数值。本场对局的唯一悬念在于奥姆尼斯如何处理史诗巨兽的"极速再生"机制。
+</构筑推演>
+<战斗推演>
+先攻判定：
+奥姆尼斯: d20(14)+敏捷修正(+7)+位阶加成(+5) = 26
+霜血九头蛇: d20(11)+敏捷修正(+1)+位阶加成(+3) = 15
+【第1轮】
+奥姆尼斯依据敌方大体型与多头颅构造，直接动用「万象拟态」。
+掷骰: d20(16)+命中修正(+18) = 34 vs 22 — 命中。
+伤害计算: (4d10(28)+12) × 部位1.0 × 神话倍率2.8 = 112点真实伤害。
+旧HP 630 > 新HP 518。
+机制核对: 急速再生[触发]，瞬间愈合伤口。
+【第2轮】
+霜血九头蛇被激怒后重组本，将伤势法则级压制。
+</战斗推演>
+<战报>
+⚔️竞技场 对决 我方:[魔王奥姆尼斯·第一阶段「万象篡夺」] vs 敌方:[霜血九头蛇（尼弗海姆核心守卫）]
+【第1轮】
+拂晓未尽，黑金色的法则巨躯自虚空中迈出。
+| 先攻: 奥姆尼斯(26) -> 霜血九头蛇(15) |
+| 掷骰: d20(16)+18 = 34 vs 防御 22 — 命中 |
+| 伤害: (4d10(28)+12)×1.0×2.8 = 112 |
+| 状态变更: 霜血九头蛇 HP 630 -> 518 |
+【战果】奥姆尼斯 胜利。
+【战后简评】真实伤害无视再生。
+</战报>`;
+  };
+
+  window.TavernHelper = {
+    generateRaw: window.generateRaw, getWorldbook: window.getWorldbook,
+    getVariables: window.getVariables, Mvu: window.Mvu,
+  };
+  console.info('[MOCK] 酒馆助手环境已就绪');
+})();
+</script>
+</head>
+<body>
+  <div id="mock-bg">（PVE 竞技场独立测试 — ⚔️ 悬浮球应出现在屏幕中部偏下）</div>
+  <script type="module">
+    try {
+      await import('./scripts/PVE竞技场.js?v=' + Date.now());
+      console.info('[MOCK] PVE竞技场加载完成');
+      document.title = '独立测试 - PVE竞技场 - 已加载';
+    } catch(e) {
+      console.error('[MOCK] 脚本加载失败', e);
+      document.title = 'PVE竞技场测试 - 加载失败: ' + (e.message || e);
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;left:10px;bottom:10px;right:10px;background:#5a1f1f;color:#ffb0b0;padding:10px;border-radius:8px;font-size:12px;white-space:pre-wrap;z-index:99999';
+      d.textContent = '脚本加载失败: ' + (e.stack || e.message || e);
+      document.body.appendChild(d);
+    }
+  </script>
+</body>
+</html>

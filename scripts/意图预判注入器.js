@@ -22,7 +22,7 @@
   const TAG = '[意图注入]';
 
   // 世界书名候选（卡内 extensions.world；逐个尝试直到命中）
-  const WORLD_NAMES = ['伊瑟利亚3.4', '伊瑟利亚大陆3.6', '伊瑟利亚'];
+  const WORLD_NAMES = ['伊瑟利亚3.7', '伊瑟利亚大陆3.7', '伊瑟利亚3.4', '伊瑟利亚大陆3.6', '伊瑟利亚'];
 
   // 意图 → 规则条目（entry=主条目；extra=伴随条目）
   const INTENT_RULES = {

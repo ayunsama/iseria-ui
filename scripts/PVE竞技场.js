@@ -347,7 +347,7 @@
     async function loadWorldbook() {
         if (wbCache) return wbCache;
         const names = (typeof getCharWorldbookNames === 'function' && (() => { try { return getCharWorldbookNames('current'); } catch (e) { return null; } })()) || null;
-        const bookName = (names && (names.primary || '')) || '伊瑟利亚3.4';
+        const bookName = (names && (names.primary || '')) || '伊瑟利亚3.7';
         let entries = [];
         try { entries = await getWorldbook(bookName); } catch (e) {}
         if (!Array.isArray(entries) || !entries.length) {
