@@ -455,8 +455,8 @@ const Schema = z.object({
       上次触发事件: str('')
     }).prefault({}),
     // 紧张度托管脚本追踪字段（$前缀：AI 不可见，脚本读写）：
-    // - 紧张度已结算新闻：Record<新闻标题, number | {v,s}>，记录该新闻已用于紧张度结算（防重复叠加）
-    //   兼容两种值：旧档纯数字（视为 {v:数, s:'大陆'}）与脚本当前写入的 {v:影响值, s:影响范围}
+    // - 紧张度已结算新闻：Record<新闻标题, number | {v, f[, s]}>，记录该新闻已用于紧张度结算（防重复叠加）
+    //   兼容三种值：旧档纯数字、申报制前的 {v, s}、申报制当前的 {v, f}（f=结算楼层）——s/f 均可选
     // - 紧张度基线：脚本托管前的紧张度快照，用于脚本增量结算起点
     // 宽容输入：若整体误写成数组/数字等非对象，自动归一化为对象，避免 zod 中断变量更新
     紧张度已结算新闻: z.preprocess(
@@ -475,7 +475,7 @@ const Schema = z.object({
       },
       z.record(z.string(), z.union([
         z.number(),
-        z.object({ v: z.number(), s: z.string() }).passthrough()
+        z.object({ v: z.number(), s: z.string().optional(), f: z.number().optional() }).passthrough()
       ]))
     ).prefault({}),
     紧张度基线: clampNum(35, 0, 100),
