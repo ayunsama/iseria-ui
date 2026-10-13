@@ -8056,12 +8056,18 @@ var TRT_TECH = {
     (async function () {
         try {
             if (typeof getWorldbook !== 'function' || typeof getVariables !== 'function' || typeof replaceVariables !== 'function') return;
+            // 节流：每聊天、每浏览器会话至多扫描一次整本世界书（避免每楼渲染都拉取 4.5MB）
+            var _cid = '';
+            try { if (typeof getCurrentChatId === 'function') _cid = getCurrentChatId() || ''; } catch (e0) {}
+            var _ck = 'iz_ifline_scan_' + _cid;
+            try { if (sessionStorage.getItem(_ck)) return; } catch (e1) {}
             var _names = ['伊瑟利亚3.7', '伊瑟利亚大陆3.7', '伊瑟利亚3.4', '伊瑟利亚大陆3.6', '伊瑟利亚'];
             var _wb = null;
             for (var i = 0; i < _names.length; i++) {
                 try { var _r = await getWorldbook(_names[i]); if (_r && _r.length) { _wb = _r; break; } } catch (e) {}
             }
             if (!_wb) return;
+            try { sessionStorage.setItem(_ck, '1'); } catch (e2) {}
             var _ifOn = false;
             for (var j = 0; j < _wb.length; j++) {
                 var _n = _wb[j].name || '';
