@@ -982,7 +982,7 @@
     // AI 对两个点数池的直写一律剥离：扣点由脚本自动完成（防双扣），增加被严禁
     for (var i = commands.length - 1; i >= 0; i--) {
       if (segsMatch(gateSegsOf(commands[i]))) {
-        console.warn('[升级脚本·点数硬门槛] 已剥离对 ' + label + ' 的 AI 直写（脚本自动扣点）');
+        gateWarn('已剥离对 ' + label + ' 的 AI 直写（' + label + '为脚本托管：扣点由脚本自动完成、禁止增加；自定义加护类效果可改为脚本结算）');
         commands.splice(i, 1);
       }
     }

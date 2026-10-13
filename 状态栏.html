@@ -4942,12 +4942,20 @@ var TRT_TECH = {
             }
         }
         // 被动（每层静默）：只要年龄在成长区间且未发满，就自动补
-        async function passiveAgeGrowthCheck() {
+        // ★ v2 修复：改用事件传入的 rawVariables 原位修改（对齐「自动升级脚本/产业结算」的正确姿势）。
+        //   旧版自行 getMvuData+replaceMvuData 另写 message 层：与事件链自身的持久化赛跑被覆盖——
+        //   发放记录（chat 层）活着、加点却年年蒸发 → 年年提示、点数不见（玩家反馈"棍母"）。
+        async function passiveAgeGrowthCheck(rawVariables) {
             if (typeof Mvu === 'undefined') return;
             if (!ageGrowthEnabled()) return; // 首页开关关闭 → 完全不发放
             try {
-                var mvuData = currentMvuData();
-                var stat = mvuData.stat_data;
+                var stat = rawVariables && rawVariables.stat_data;
+                var legacyPersist = null;
+                if (!stat) {
+                    legacyPersist = currentMvuData();
+                    stat = legacyPersist && legacyPersist.stat_data;
+                }
+                if (!stat) return;
                 var actor = allocActor(stat, '主角');
                 if (!actor) return;
                 var age = parseInt(_.get(actor, '基础信息.年龄', 0), 10) || 0;
@@ -4958,17 +4966,17 @@ var TRT_TECH = {
                 if (r.firstTime) {
                     // 首次：仅初始化发放记录，不发多余点
                     stat.$flags = stat.$flags || {};
-                    stat.$flags.年龄成长 = r.expected;
-                    writeAgeGrowthIssued(r.expected);
-                    await persistStatChange(mvuData);
+                    stat.$flags.年龄成长 = r.expected;      // 原位写：随本次更新持久化
+                    writeAgeGrowthIssued(r.expected);        // chat 层 + localStorage 兜底
+                    if (legacyPersist) { try { await persistStatChange(legacyPersist); } catch (e) {} }
                     return;
                 }
                 if (r.missing <= 0) return;
-                actor.基础属性.未分配点数 = (parseInt(_.get(actor, '基础属性.未分配点数', 0), 10) || 0) + r.missing;
+                actor.基础属性.未分配点数 = (parseInt(_.get(actor, '基础属性.未分配点数', 0), 10) || 0) + r.missing;  // 原位写
                 stat.$flags = stat.$flags || {};
-                stat.$flags.年龄成长 = r.expected;
-                writeAgeGrowthIssued(r.expected);
-                await persistStatChange(mvuData);
+                stat.$flags.年龄成长 = r.expected;          // 原位写
+                writeAgeGrowthIssued(r.expected);            // 记录双保险（chat 层）
+                if (legacyPersist) { try { await persistStatChange(legacyPersist); } catch (e) {} }
                 if (typeof toastr !== 'undefined' && toastr.info) toastr.info('🎂 年龄成长：' + r.age + '岁 自动获得 ' + r.missing + ' 点未分配属性点（累计发放 ' + r.expected + '/20）。');
             } catch (e) { console.warn('[年龄成长] 被动检测失败:', e); }
         }
@@ -6968,7 +6976,7 @@ var TRT_TECH = {
             // 被动年龄成长：每次变量更新结束（每层）静默检测，够就自动补、不够不管
             try {
                 if (typeof Mvu !== 'undefined' && Mvu.events && Mvu.events.VARIABLE_UPDATE_ENDED) {
-                    eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, function () { passiveAgeGrowthCheck(); });
+                    eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, function (nv) { passiveAgeGrowthCheck(nv); });
                 }
             } catch (e) { console.warn('[年龄成长] 事件注册失败:', e); }
 
@@ -7979,15 +7987,28 @@ var TRT_TECH = {
                         try { f = ls.getItem(PT_F); } catch (e) {}
                         return { t: t, f: f };
                     }
+                    function renameBoxRadios(box) {
+                        // ★ 同文档内同名 radio 互斥：给每条消息的盒子独立改名（CSS 按 value 判定，不受影响），
+                        //   否则点一楼的"简约"会把其他楼的勾选弹掉 → 其他楼回退默认外观（玩家反馈的互斥 BUG）
+                        if (!box || box.__ptRenamed) return;
+                        box.__ptRenamed = true;
+                        var tag = '__pt' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+                        var ins = box.querySelectorAll('input[type="radio"][name]');
+                        for (var i = 0; i < ins.length; i++) {
+                            var nm = ins[i].name;
+                            if (nm === PT_T || nm === PT_F) ins[i].name = nm + tag;
+                        }
+                    }
                     function applyBox(box, t, f) {
-                        if (!box || box.__ptApplied) return;
-                        box.__ptApplied = true;
+                        // ★ 每次全量强制回放（去掉旧版"只应用一次"的标记——互斥弹掉后它挡住了重新回放）
+                        if (!box) return;
+                        renameBoxRadios(box);
                         if (t) {
-                            var rs = box.querySelectorAll('input[name="pt-theme"]');
+                            var rs = box.querySelectorAll('input[name^="pt-theme"]');
                             for (var i = 0; i < rs.length; i++) if (rs[i].value === t) { rs[i].checked = true; break; }
                         }
                         if (f) {
-                            var fs = box.querySelectorAll('input[name="pt-font"]');
+                            var fs = box.querySelectorAll('input[name^="pt-font"]');
                             for (var j = 0; j < fs.length; j++) if (fs[j].value === f) { fs[j].checked = true; break; }
                         }
                     }
@@ -8002,8 +8023,12 @@ var TRT_TECH = {
                     doc.addEventListener('change', function (ev) {
                         var el = ev && ev.target;
                         if (!el || !el.name) return;
-                        if (el.name !== PT_T && el.name !== PT_F) return;
-                        try { ls.setItem(el.name, el.value); } catch (e) {}
+                        var isT = el.name.indexOf(PT_T) === 0;
+                        var isF = el.name.indexOf(PT_F) === 0;
+                        if (!isT && !isF) return;
+                        try { ls.setItem(isT ? PT_T : PT_F, el.value); } catch (e) {}
+                        // ★ 立即全量回放：本楼与其他楼层同步切换
+                        try { rescan(); } catch (e) {}
                     }, true);
                     // ② 已存在的历史楼层回放
                     rescan();
