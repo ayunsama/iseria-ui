@@ -12414,7 +12414,6 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
         var dlcEntriesContent = {
             '[DLC]咩咩大陆': '',
             '[DLC]咩咩大陆/国家': '',
-            '[DLC]咩咩大陆/职业技能树': '',
             '[DLC]咩咩大陆/地区': '',
             '[DLC]咩咩大陆/历史脉络': '',
             '[DLC]咩咩大陆/乌云魔王': '',
@@ -12718,8 +12717,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
             '[DLC]大炎王朝/主要NPC',
             '[DLC]大炎王朝/动态剧情',
             '[DLC]大炎王朝/炎脉龙裔',
-            '[DLC]大炎王朝/炎祖',
-            '[DLC]大炎王朝/EJS职业控制器'
+            '[DLC]大炎王朝/炎祖'
         ];
 
         async function toggleDayanDLC(enable) {
@@ -12993,10 +12991,19 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
         window.initDynamicKeywordDisabledEntries = initDynamicKeywordDisabledEntries;
 
         // 终焉纪元模式下需要过滤关闭的世界书关键词（模糊匹配条目名）
-        var apocalypseFilterKeywords = ['体系', '组织', '势力', '地点', '秘境', 'NPC速览'];
+        var apocalypseFilterKeywords = ['体系', '组织', '势力', '地点', '秘境', 'NPC速览', '主线', '纪元触发器'];
 
         async function toggleApocalypseDLC(enable, skipFilter) {
             apocalypseDlcEnabled = enable;
+            // ★ IF 线标志：供紧张度脚本识别（豁免"终局保底85"）与纪元触发器门禁读取
+            try {
+                if (typeof getVariables === 'function' && typeof replaceVariables === 'function') {
+                    var _cv = getVariables({ type: 'chat' }) || {};
+                    if (enable) { _cv['终焉纪元IF线'] = true; } else { delete _cv['终焉纪元IF线']; }
+                    replaceVariables(_cv, { type: 'chat' });
+                    console.log('✅ 终焉纪元IF线标志已' + (enable ? '写入' : '清除'));
+                }
+            } catch (e) { console.warn('⚠ 终焉纪元IF线标志写入失败:', e); }
             // ⚡ 先执行所有同步UI更新，确保界面立即响应
             toggleApocalypseDesc(enable);
             toggleApocalypseBlessings(enable);
@@ -13322,6 +13329,10 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
 
                 var changed = false;
                 var matchedCount = 0;
+                // ★ 快照/回滚：禁用时记录各条目原始启用状态，恢复时精确还原
+                //   （避免恢复时误开默认关闭的条目——如各章「当前主线」、主线任务管理器等）
+                var snapshot = {};
+                try { if (!disableMatched) snapshot = JSON.parse(localStorage.getItem('iz_apoc_filter_backup') || '{}'); } catch (e0) { snapshot = {}; }
                 // 统计总条目数用于调试
                 console.log('🔍 终焉纪元世界书过滤: 扫描 ' + entries.length + ' 条条目，关键词: ' + apocalypseFilterKeywords.join(', '));
 
@@ -13350,8 +13361,14 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
                     }
 
                     if (shouldFilter) {
-                        // disableMatched=true → 关闭(禁用)；false → 恢复(启用)
-                        var newEnabled = !disableMatched;
+                        // disableMatched=true → 关闭(禁用)并记录原状态；false → 按快照精确恢复
+                        var newEnabled;
+                        if (disableMatched) {
+                            snapshot[name] = entry.enabled;
+                            newEnabled = false;
+                        } else {
+                            newEnabled = (typeof snapshot[name] === 'boolean') ? snapshot[name] : true;
+                        }
                         if (entry.enabled !== newEnabled) {
                             entry.enabled = newEnabled;
                             changed = true;
@@ -13361,6 +13378,7 @@ var skillStr = allSkillsWithDesc.length > 0 ? allSkillsWithDesc.join("\n") : "�
                 }
 
                 if (changed) {
+                    if (disableMatched) { try { localStorage.setItem('iz_apoc_filter_backup', JSON.stringify(snapshot)); } catch (e1) {} }
                     await replaceWorldbook(wbName, entries);
                     console.log('✅ 终焉纪元世界书过滤: 已' + (disableMatched ? '禁用' : '恢复') + ' ' + matchedCount + ' 条匹配条目');
                 } else {

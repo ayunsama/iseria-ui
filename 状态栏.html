@@ -8048,6 +8048,41 @@ var TRT_TECH = {
     </script>
     <script>
     /* ============================================================
+       IF线标志防御性补写（终焉纪元 DLC）
+       若检测到「[DLC]魔王胜利IF线」条目处于启用状态但聊天变量
+       「终焉纪元IF线」缺失，则补写之——保证紧张度脚本正确识别
+       IF线（豁免终局保底85）与纪元触发器门禁生效。
+       ============================================================ */
+    (async function () {
+        try {
+            if (typeof getWorldbook !== 'function' || typeof getVariables !== 'function' || typeof replaceVariables !== 'function') return;
+            var _names = ['伊瑟利亚3.7', '伊瑟利亚大陆3.7', '伊瑟利亚3.4', '伊瑟利亚大陆3.6', '伊瑟利亚'];
+            var _wb = null;
+            for (var i = 0; i < _names.length; i++) {
+                try { var _r = await getWorldbook(_names[i]); if (_r && _r.length) { _wb = _r; break; } } catch (e) {}
+            }
+            if (!_wb) return;
+            var _ifOn = false;
+            for (var j = 0; j < _wb.length; j++) {
+                var _n = _wb[j].name || '';
+                if (_n.indexOf('[DLC]魔王胜利IF线') === 0 && _wb[j].enabled) { _ifOn = true; break; }
+            }
+            var _cv = getVariables({ type: 'chat' }) || {};
+            if (_ifOn && !_cv['终焉纪元IF线']) {
+                _cv['终焉纪元IF线'] = true;
+                replaceVariables(_cv, { type: 'chat' });
+                console.info('[IF线] 检测到终焉纪元DLC条目启用，已补写「终焉纪元IF线」标志');
+            } else if (!_ifOn && _cv['终焉纪元IF线']) {
+                delete _cv['终焉纪元IF线'];
+                replaceVariables(_cv, { type: 'chat' });
+                console.info('[IF线] 终焉纪元DLC条目未启用，已清除「终焉纪元IF线」标志');
+            }
+        } catch (e) { try { console.warn('[IF线] 标志补写失败:', e); } catch (e2) {} }
+    })();
+    </script>
+
+    <script>
+    /* ============================================================
        时空存档·读档补丁（正文渲染器按钮排交互）
        按钮由卡内正则（正文美化暗色）渲染：data-iz-save / data-iz-load / data-iz-info
        楼层号从点击处最近的 [mesid]/[message_id]/[mes] DOM 祖先解析。
