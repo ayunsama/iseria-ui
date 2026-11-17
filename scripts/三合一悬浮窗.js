@@ -517,8 +517,9 @@ function __yzPromptChat(payload) {
             const TH = window.TavernHelper;
             if (!TH) return;
             const names = TH.getCharWorldbookNames ? TH.getCharWorldbookNames('current') : null;
-            const wbName = names && names.primary ? names.primary : '伊瑟利亚3.7';
-            const entries = TH.getWorldbook ? TH.getWorldbook(wbName) : [];
+            const _wbCand = names && names.primary ? [names.primary].concat(['伊瑟利亚3.7','伊瑟利亚大陆3.7','伊瑟利亚3.4','伊瑟利亚大陆3.6','伊瑟利亚']) : ['伊瑟利亚3.7','伊瑟利亚大陆3.7','伊瑟利亚3.4','伊瑟利亚大陆3.6','伊瑟利亚'];
+            let entries = [];
+            for (const _n of _wbCand) { const _e = TH.getWorldbook ? TH.getWorldbook(_n) : null; if (_e && _e.length) { entries = _e; break; } }
             if (!entries || !entries.length) return;
             const facts = [];
             const keys = entries.filter(function (e) { if (!e.enabled) return false; const n = e.name || e.comment || ''; return /世界总纲|种族|体系|神明|龙类|位阶|职业/.test(n) });
