@@ -232,7 +232,19 @@ const Schema = z.object({
         来源: str(''),
         是否过期: str('否'),
         相关地点: str(''),
-        相关势力: str('')
+        相关势力: str(''),
+        // ── 紧张度申报制字段（AI 可见可写；紧张度脚本据此映射数值）──
+        // ★ 必须显式声明：此前未声明，zod 嵌套 strip 会在 AI 变量更新校验时把申报字段剥掉，
+        //   导致紧张度脚本读不到 方向/影响度 → 申报制静默失效（已修复）。
+        方向: str(''),       // 加剧 / 缓和
+        影响度: str(''),     // 小 / 中 / 大 / 极大 / 无
+        影响范围: str(''),   // 世界 / 大陆 / 区域 / 局部（旧关键词模式兼容字段）
+        // ── 后果申报（AI 可见可写；「世界状态」脚本据此结算永久性世界改变，路由到地点/势力变动记录）──
+        // 类型白名单（脚本校验，越界忽略）：据点易手 / 据点毁灭 / 人物死亡 / 人物下台 / 事件阻止 / 事件提前 / 事件结束 / 势力变动
+        后果: z.preprocess(
+          (v) => (v === undefined || v === null || v === '' ? {} : (typeof v === 'object' && !Array.isArray(v) ? v : {})),
+          z.object({ 类型: str(''), 目标: str(''), 新值: str('') }).prefault({})
+        ).prefault({})
       }).prefault({})).prefault({})
     }).prefault({}),
     // 追踪记录（AI 可见可写，按「变量更新规则·追踪记录」insert 流水账；状态栏只读显示）
@@ -485,6 +497,32 @@ const Schema = z.object({
       标题: str(''),
       影响: safeNum(0)
     }).prefault({})).prefault([]),
+    // ── 世界状态机（$前缀：AI 不可见不可写，由「世界状态」脚本结算）──
+    // 输入：动态新闻（AI 申报 后果 字段 + 脚本扫描结束词）；输出：粘性事件旗标 + 势力控制/据点存续/人物命运 + 地点/势力变动记录
+    // 渲染端（纪元触发器 / 地点◆历史局势 / 势力◆历史局势）读取本状态，实现「重大事件永久改变世界」的全局状态机渲染。
+    // 必须显式声明全部嵌套字段，否则 zod strip 会在 AI 变量更新时剥掉整个状态。
+    世界状态: z.object({
+      版本: safeNum(1),
+      // 大事件粘性旗标：Record<事件名, { 状态: 已结束|已阻止|已提前, 月: 结算楼层对应连续月数, 说明 }>
+      事件旗标: z.record(z.string(), z.object({
+        状态: str(''),
+        月: safeNum(0),
+        说明: str('')
+      }).prefault({})).prefault({}),
+      // 地点/区域 → 控制方（如 格洛斯特: '奥尔德南帝国'）
+      势力控制: z.record(z.string(), z.string()).prefault({}),
+      // 据点 → 是否存续（false=被毁/消失，如大转移卷走的村镇）
+      据点存续: z.record(z.string(), z.boolean()).prefault({}),
+      // 人物 → 命运（如 威廉二世: '遇刺身亡'）
+      人物命运: z.record(z.string(), z.string()).prefault({}),
+      // 后果结算防重：Record<新闻标题, 结算楼层>
+      已结算后果: z.record(z.string(), safeNum(0)).prefault({}),
+      // 分歧记录（脚本按 目标→地点/势力 路由表写入；EJS 渲染端直接读取，每键上限 8 条）
+      地点变动: z.record(z.string(), z.array(str('')).prefault([])).prefault({}),
+      势力变动: z.record(z.string(), z.array(str('')).prefault([])).prefault({}),
+      // 王选内战是否尘埃落定（纪元触发器优先读此旗标，新闻扫描作兜底）
+      内战已结束: z.boolean().prefault(false)
+    }).prefault({}),
     // 年龄成长累计已发放购点（1-18 岁共 20；$前缀：AI 不可见，状态栏托管；只认发放记录，不干扰升级所得属性点）
     年龄成长: safeNum(0),
     // 追踪记录全量开关（$前缀：AI 不可见；状态栏切换。true=状态变量输出全量流水，false=仅最近 5 条省 token）
